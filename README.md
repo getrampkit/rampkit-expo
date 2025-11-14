@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="https://dqplcvw3fzili.cloudfront.net/rampkitlogo.png" height="80" />
+  <br />
+  <img src="https://dqplcvw3fzili.cloudfront.net/rampkitlogo.png" height="110" />
 </p>
 
 <h1 align="center">RampKit Expo SDK</h1>
@@ -37,15 +38,20 @@ npx expo install rampkit-expo-dev
 ```ts
 import { RampKit } from "rampkit-expo-dev";
 
-RampKit.configure({
-  projectId: "YOUR_PROJECT_ID",
+await RampKit.init({
+  apiKey: "YOUR_API_KEY",
+  environment: "production", // optional
+  autoShowOnboarding: false, // optional
+  onOnboardingFinished: (payload) => {
+    // optional callback fired when the flow finishes
+  },
 });
 ```
 
 Show an onboarding:
 
 ```ts
-await RampKit.present();
+RampKit.showOnboarding();
 ```
 
 ---
@@ -53,11 +59,21 @@ await RampKit.present();
 ## Configuration Options
 
 ```ts
-RampKit.configure({
-  projectId: "abc123",
-  userId: "user_42", // optional
-  debug: true, // optional
+await RampKit.init({
+  apiKey: "abc123",
+  environment: "staging", // optional
+  autoShowOnboarding: true, // optional (auto-present after init if data is available)
+  onOnboardingFinished: (payload) => {
+    // optional
+  },
 });
+
+// Access the generated stable user id (stored securely)
+const idFromInit = RampKit.getUserId(); // string | null (available after init)
+
+// Or fetch/generate it directly (always returns a string)
+import { getRampKitUserId } from "rampkit-expo-dev";
+const userId = await getRampKitUserId();
 ```
 
 More examples are in the docs:  
@@ -68,11 +84,19 @@ https://rampkit.com/docs
 ## Example
 
 ```ts
+import { useEffect } from "react";
 import { RampKit } from "rampkit-expo-dev";
 import { Button } from "react-native";
 
 export default function App() {
-  return <Button title="Show Onboarding" onPress={() => RampKit.present()} />;
+  useEffect(() => {
+    // Initialize once in your app
+    RampKit.init({ apiKey: "YOUR_API_KEY" });
+  }, []);
+
+  return (
+    <Button title="Show Onboarding" onPress={() => RampKit.showOnboarding()} />
+  );
 }
 ```
 
