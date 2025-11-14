@@ -1,0 +1,26 @@
+# Folders
+node_modules
+.npm-cache
+src
+__tests__
+coverage
+example
+examples
+scripts
+.github
+.idea
+build-temp
+dist-temp
+*.tgz
+
+# Files
+tsconfig.json
+package-lock.json
+yarn.lock
+.DS_Store
+.env
+.env.*
+npm-debug.log*
+
+# Ignore your own tarballs
+rampkit-expo*.tgz
