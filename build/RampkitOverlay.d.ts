@@ -12,6 +12,7 @@ export declare function showRampkitOverlay(opts: {
     variables?: Record<string, any>;
     requiredScripts?: string[];
     onClose?: () => void;
+    onOnboardingFinished?: (payload?: any) => void;
 }): void;
 export declare function hideRampkitOverlay(): void;
 export declare function preloadRampkitOverlay(opts: {
@@ -27,5 +28,6 @@ declare function Overlay(props: {
     requiredScripts?: string[];
     prebuiltDocs?: string[];
     onRequestClose: () => void;
+    onOnboardingFinished?: (payload?: any) => void;
 }): any;
 export default Overlay;

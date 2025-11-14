@@ -47,6 +47,8 @@ const react_native_root_siblings_1 = __importDefault(require("react-native-root-
 const react_native_pager_view_1 = __importDefault(require("react-native-pager-view"));
 const react_native_webview_1 = require("react-native-webview");
 const Haptics = __importStar(require("expo-haptics"));
+const StoreReview = __importStar(require("expo-store-review"));
+const Notifications = __importStar(require("expo-notifications"));
 // Reuse your injected script from App
 exports.injectedHardening = `
 (function(){
@@ -136,7 +138,7 @@ function showRampkitOverlay(opts) {
             var _a;
             hideRampkitOverlay();
             (_a = opts.onClose) === null || _a === void 0 ? void 0 : _a.call(opts);
-        } })));
+        }, onOnboardingFinished: opts.onOnboardingFinished })));
     // Once shown, we can safely discard the preloader sibling if present
     if (preloadSibling) {
         preloadSibling.destroy();
@@ -365,6 +367,90 @@ function Overlay(props) {
             props.onRequestClose();
         }
     };
+    async function handleNotificationPermissionRequest(payload) {
+        const iosDefaults = { allowAlert: true, allowBadge: true, allowSound: true };
+        const androidDefaults = {
+            channelId: "default",
+            name: "Default Channel",
+            importance: "MAX",
+        };
+        const behaviorDefaults = { shouldShowBanner: true, shouldPlaySound: false };
+        const iosReq = { ...((payload === null || payload === void 0 ? void 0 : payload.ios) || iosDefaults) };
+        const androidCfg = { ...((payload === null || payload === void 0 ? void 0 : payload.android) || androidDefaults) };
+        const behavior = { ...((payload === null || payload === void 0 ? void 0 : payload.behavior) || behaviorDefaults) };
+        try {
+            // Set foreground behavior
+            Notifications.setNotificationHandler({
+                handleNotification: async () => ({
+                    shouldShowAlert: !!behavior.shouldShowBanner,
+                    shouldPlaySound: !!behavior.shouldPlaySound,
+                    shouldSetBadge: false,
+                }),
+            });
+        }
+        catch (_) { }
+        try {
+            // Minimal Android 13+ permission + channel config
+            if (react_native_1.Platform.OS === "android") {
+                const importanceMap = {
+                    MAX: Notifications.AndroidImportance.MAX,
+                    HIGH: Notifications.AndroidImportance.HIGH,
+                    DEFAULT: Notifications.AndroidImportance.DEFAULT,
+                    LOW: Notifications.AndroidImportance.LOW,
+                    MIN: Notifications.AndroidImportance.MIN,
+                };
+                const mappedImportance = importanceMap[String(androidCfg.importance || "MAX").toUpperCase()] ||
+                    Notifications.AndroidImportance.MAX;
+                if (androidCfg.channelId && androidCfg.name) {
+                    try {
+                        await Notifications.setNotificationChannelAsync(androidCfg.channelId, {
+                            name: androidCfg.name,
+                            importance: mappedImportance,
+                        });
+                    }
+                    catch (_) { }
+                }
+            }
+        }
+        catch (_) { }
+        let result = null;
+        try {
+            if (react_native_1.Platform.OS === "ios") {
+                result = await Notifications.requestPermissionsAsync({ ios: iosReq });
+            }
+            else {
+                result = await Notifications.requestPermissionsAsync();
+            }
+        }
+        catch (e) {
+            result = {
+                granted: false,
+                status: "denied",
+                canAskAgain: false,
+                error: true,
+            };
+        }
+        try {
+            console.log("[Rampkit] Notification permission status:", result);
+        }
+        catch (_) { }
+        // Save to shared vars and broadcast to all pages
+        try {
+            varsRef.current = {
+                ...varsRef.current,
+                notificationsPermission: {
+                    granted: !!(result === null || result === void 0 ? void 0 : result.granted),
+                    status: (result === null || result === void 0 ? void 0 : result.status) || "undetermined",
+                    canAskAgain: !!(result === null || result === void 0 ? void 0 : result.canAskAgain),
+                    expires: (result === null || result === void 0 ? void 0 : result.expires) || "never",
+                    ios: result === null || result === void 0 ? void 0 : result.ios,
+                    android: result === null || result === void 0 ? void 0 : result.android,
+                },
+            };
+            broadcastVars();
+        }
+        catch (_) { }
+    }
     return ((0, jsx_runtime_1.jsxs)(react_native_1.View, { style: [styles.root, !visible && styles.invisible], pointerEvents: visible ? "auto" : "none", children: [(0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, onLoadEnd: () => {
                             setLoadedCount((c) => c + 1);
                             if (i === 0)
@@ -374,6 +460,7 @@ function Overlay(props) {
                                 console.log("[Rampkit] onLoadEnd init send vars", i);
                             sendVarsToWebView(i);
                         }, onMessage: (ev) => {
+                            var _a, _b;
                             const raw = ev.nativeEvent.data;
                             console.log("raw", raw);
                             // Accept either raw strings or JSON payloads from your editor
@@ -417,6 +504,46 @@ function Overlay(props) {
                                     if (__DEV__)
                                         console.log("[Rampkit] request-vars from page", i);
                                     sendVarsToWebView(i);
+                                    return;
+                                }
+                                // 3) A page requested an in-app review prompt
+                                if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:request-review" ||
+                                    (data === null || data === void 0 ? void 0 : data.type) === "rampkit:review") {
+                                    (async () => {
+                                        try {
+                                            const available = await StoreReview.isAvailableAsync();
+                                            if (available && (await StoreReview.hasAction())) {
+                                                await StoreReview.requestReview();
+                                                return;
+                                            }
+                                            const url = StoreReview.storeUrl();
+                                            if (url) {
+                                                const writeUrl = react_native_1.Platform.OS === "ios"
+                                                    ? `${url}${url.includes("?") ? "&" : "?"}action=write-review`
+                                                    : url;
+                                                await react_native_1.Linking.openURL(writeUrl);
+                                            }
+                                        }
+                                        catch (_) { }
+                                    })();
+                                    return;
+                                }
+                                // 4) A page requested notification permission
+                                if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:request-notification-permission") {
+                                    handleNotificationPermissionRequest({
+                                        ios: data === null || data === void 0 ? void 0 : data.ios,
+                                        android: data === null || data === void 0 ? void 0 : data.android,
+                                        behavior: data === null || data === void 0 ? void 0 : data.behavior,
+                                    });
+                                    return;
+                                }
+                                // 5) Onboarding finished event from page
+                                if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:onboarding-finished") {
+                                    try {
+                                        (_a = props.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(props, data === null || data === void 0 ? void 0 : data.payload);
+                                    }
+                                    catch (_) { }
+                                    props.onRequestClose();
                                     return;
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:continue" ||
@@ -466,12 +593,44 @@ function Overlay(props) {
                                     return;
                                 }
                             }
-                            catch (_a) {
+                            catch (_c) {
                                 // String path
                                 if (raw === "rampkit:tap" ||
                                     raw === "next" ||
                                     raw === "continue") {
                                     handleAdvance(i);
+                                    return;
+                                }
+                                if (raw === "rampkit:request-review" || raw === "rampkit:review") {
+                                    (async () => {
+                                        try {
+                                            const available = await StoreReview.isAvailableAsync();
+                                            if (available && (await StoreReview.hasAction())) {
+                                                await StoreReview.requestReview();
+                                                return;
+                                            }
+                                            const url = StoreReview.storeUrl();
+                                            if (url) {
+                                                const writeUrl = react_native_1.Platform.OS === "ios"
+                                                    ? `${url}${url.includes("?") ? "&" : "?"}action=write-review`
+                                                    : url;
+                                                await react_native_1.Linking.openURL(writeUrl);
+                                            }
+                                        }
+                                        catch (_) { }
+                                    })();
+                                    return;
+                                }
+                                if (raw === "rampkit:request-notification-permission") {
+                                    handleNotificationPermissionRequest(undefined);
+                                    return;
+                                }
+                                if (raw === "rampkit:onboarding-finished") {
+                                    try {
+                                        (_b = props.onOnboardingFinished) === null || _b === void 0 ? void 0 : _b.call(props, undefined);
+                                    }
+                                    catch (_) { }
+                                    props.onRequestClose();
                                     return;
                                 }
                                 if (raw === "rampkit:goBack") {

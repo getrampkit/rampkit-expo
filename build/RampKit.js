@@ -2,10 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RampKitCore = void 0;
 const RampkitOverlay_1 = require("./RampkitOverlay");
+const userId_1 = require("./userId");
 class RampKitCore {
     constructor() {
         this.config = {};
         this.onboardingData = null;
+        this.userId = null;
     }
     static get instance() {
         if (!this._instance)
@@ -14,6 +16,15 @@ class RampKitCore {
     }
     async init(config) {
         this.config = config;
+        this.onOnboardingFinished = config.onOnboardingFinished;
+        try {
+            // Ensure a stable, encrypted user id exists on first init
+            this.userId = await (0, userId_1.getRampKitUserId)();
+            console.log("[RampKit] Init: userId", this.userId);
+        }
+        catch (e) {
+            console.log("[RampKit] Init: failed to resolve user id", e);
+        }
         console.log("[RampKit] Init: starting onboarding load");
         try {
             const response = await globalThis.fetch(RampKitCore.ONBOARDING_URL);
@@ -41,6 +52,9 @@ class RampKitCore {
     }
     getOnboardingData() {
         return this.onboardingData;
+    }
+    getUserId() {
+        return this.userId;
     }
     showOnboarding() {
         const data = this.onboardingData;
@@ -88,6 +102,13 @@ class RampKitCore {
                 screens,
                 variables,
                 requiredScripts,
+                onOnboardingFinished: (payload) => {
+                    var _a;
+                    try {
+                        (_a = this.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(this, payload);
+                    }
+                    catch (_) { }
+                },
             });
         }
         catch (e) {
@@ -96,4 +117,4 @@ class RampKitCore {
     }
 }
 exports.RampKitCore = RampKitCore;
-RampKitCore.ONBOARDING_URL = "https://labelaiimages.s3.us-east-2.amazonaws.com/labelaiOnboarding.json";
+RampKitCore.ONBOARDING_URL = "https://dqplcvw3fzili.cloudfront.net/labelaiOnboarding.json";

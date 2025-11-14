@@ -1,12 +1,15 @@
 import { preloadRampkitOverlay, showRampkitOverlay } from "./RampkitOverlay";
+import { getRampKitUserId } from "./userId";
 
 export class RampKitCore {
   private static _instance: RampKitCore;
   private config: any = {};
   private onboardingData: any = null;
+  private userId: string | null = null;
+  private onOnboardingFinished?: (payload?: any) => void;
 
   private static readonly ONBOARDING_URL =
-    "https://labelaiimages.s3.us-east-2.amazonaws.com/labelaiOnboarding.json";
+    "https://dqplcvw3fzili.cloudfront.net/labelaiOnboarding.json";
 
   static get instance() {
     if (!this._instance) this._instance = new RampKitCore();
@@ -17,8 +20,17 @@ export class RampKitCore {
     apiKey: string;
     environment?: string;
     autoShowOnboarding?: boolean;
+    onOnboardingFinished?: (payload?: any) => void;
   }) {
     this.config = config;
+    this.onOnboardingFinished = config.onOnboardingFinished;
+    try {
+      // Ensure a stable, encrypted user id exists on first init
+      this.userId = await getRampKitUserId();
+      console.log("[RampKit] Init: userId", this.userId);
+    } catch (e) {
+      console.log("[RampKit] Init: failed to resolve user id", e);
+    }
     console.log("[RampKit] Init: starting onboarding load");
     try {
       const response = await (globalThis as any).fetch(
@@ -47,6 +59,10 @@ export class RampKitCore {
 
   getOnboardingData() {
     return this.onboardingData;
+  }
+
+  getUserId() {
+    return this.userId;
   }
 
   showOnboarding() {
@@ -99,6 +115,11 @@ export class RampKitCore {
         screens,
         variables,
         requiredScripts,
+        onOnboardingFinished: (payload?: any) => {
+          try {
+            this.onOnboardingFinished?.(payload);
+          } catch (_) {}
+        },
       });
     } catch (e) {
       console.log("[RampKit] ShowOnboarding: failed to show overlay", e);

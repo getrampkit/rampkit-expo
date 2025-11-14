@@ -1,11 +1,13 @@
 import React, { useMemo, useRef, useState } from "react";
-import { View, StyleSheet, BackHandler, Animated, Easing } from "react-native";
+import { View, StyleSheet, BackHandler, Animated, Easing, Linking, Platform } from "react-native";
 import RootSiblings from "react-native-root-siblings";
 import PagerView, {
   PagerViewOnPageSelectedEvent,
 } from "react-native-pager-view";
 import { WebView } from "react-native-webview";
 import * as Haptics from "expo-haptics";
+import * as StoreReview from "expo-store-review";
+import * as Notifications from "expo-notifications";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -103,6 +105,7 @@ export function showRampkitOverlay(opts: {
   variables?: Record<string, any>;
   requiredScripts?: string[];
   onClose?: () => void;
+  onOnboardingFinished?: (payload?: any) => void;
 }) {
   console.log("showRampkitOverlay");
   if (sibling) return; // already visible
@@ -119,6 +122,7 @@ export function showRampkitOverlay(opts: {
           hideRampkitOverlay();
           opts.onClose?.();
         }}
+        onOnboardingFinished={opts.onOnboardingFinished}
       />
     )
   );
@@ -251,6 +255,7 @@ function Overlay(props: {
   requiredScripts?: string[];
   prebuiltDocs?: string[];
   onRequestClose: () => void;
+  onOnboardingFinished?: (payload?: any) => void;
 }) {
   const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
@@ -405,6 +410,106 @@ function Overlay(props: {
     }
   };
 
+  async function handleNotificationPermissionRequest(payload?: {
+    ios?: {
+      allowAlert?: boolean;
+      allowBadge?: boolean;
+      allowSound?: boolean;
+    };
+    android?: {
+      channelId?: string;
+      name?: string;
+      importance?: string; // "MAX" | "HIGH" | ...
+    };
+    behavior?: {
+      shouldShowBanner?: boolean;
+      shouldPlaySound?: boolean;
+    };
+  }) {
+    const iosDefaults = { allowAlert: true, allowBadge: true, allowSound: true };
+    const androidDefaults = {
+      channelId: "default",
+      name: "Default Channel",
+      importance: "MAX",
+    };
+    const behaviorDefaults = { shouldShowBanner: true, shouldPlaySound: false };
+
+    const iosReq = { ...(payload?.ios || iosDefaults) };
+    const androidCfg = { ...(payload?.android || androidDefaults) };
+    const behavior = { ...(payload?.behavior || behaviorDefaults) };
+
+    try {
+      // Set foreground behavior
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: !!behavior.shouldShowBanner,
+          shouldPlaySound: !!behavior.shouldPlaySound,
+          shouldSetBadge: false,
+        }),
+      });
+    } catch (_) {}
+
+    try {
+      // Minimal Android 13+ permission + channel config
+      if (Platform.OS === "android") {
+        const importanceMap: Record<string, number> = {
+          MAX: Notifications.AndroidImportance.MAX,
+          HIGH: Notifications.AndroidImportance.HIGH,
+          DEFAULT: Notifications.AndroidImportance.DEFAULT,
+          LOW: Notifications.AndroidImportance.LOW,
+          MIN: Notifications.AndroidImportance.MIN,
+        };
+        const mappedImportance =
+          importanceMap[String(androidCfg.importance || "MAX").toUpperCase()] ||
+          Notifications.AndroidImportance.MAX;
+        if (androidCfg.channelId && androidCfg.name) {
+          try {
+            await Notifications.setNotificationChannelAsync(androidCfg.channelId, {
+              name: androidCfg.name,
+              importance: mappedImportance,
+            });
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    let result: any = null;
+    try {
+      if (Platform.OS === "ios") {
+        result = await Notifications.requestPermissionsAsync({ ios: iosReq as any });
+      } else {
+        result = await Notifications.requestPermissionsAsync();
+      }
+    } catch (e) {
+      result = {
+        granted: false,
+        status: "denied",
+        canAskAgain: false,
+        error: true,
+      };
+    }
+
+    try {
+      console.log("[Rampkit] Notification permission status:", result);
+    } catch (_) {}
+
+    // Save to shared vars and broadcast to all pages
+    try {
+      varsRef.current = {
+        ...varsRef.current,
+        notificationsPermission: {
+          granted: !!result?.granted,
+          status: result?.status || "undetermined",
+          canAskAgain: !!result?.canAskAgain,
+          expires: result?.expires || "never",
+          ios: result?.ios,
+          android: result?.android,
+        },
+      };
+      broadcastVars();
+    } catch (_) {}
+  }
+
   return (
     <View
       style={[styles.root, !visible && styles.invisible]}
@@ -518,6 +623,47 @@ function Overlay(props: {
                     sendVarsToWebView(i);
                     return;
                   }
+                  // 3) A page requested an in-app review prompt
+                  if (
+                    data?.type === "rampkit:request-review" ||
+                    data?.type === "rampkit:review"
+                  ) {
+                    (async () => {
+                      try {
+                        const available = await StoreReview.isAvailableAsync();
+                        if (available && (await StoreReview.hasAction())) {
+                          await StoreReview.requestReview();
+                          return;
+                        }
+                        const url = StoreReview.storeUrl();
+                        if (url) {
+                          const writeUrl =
+                            Platform.OS === "ios"
+                              ? `${url}${url.includes("?") ? "&" : "?"}action=write-review`
+                              : url;
+                          await Linking.openURL(writeUrl);
+                        }
+                      } catch (_) {}
+                    })();
+                    return;
+                  }
+                  // 4) A page requested notification permission
+                  if (data?.type === "rampkit:request-notification-permission") {
+                    handleNotificationPermissionRequest({
+                      ios: data?.ios,
+                      android: data?.android,
+                      behavior: data?.behavior,
+                    });
+                    return;
+                  }
+                  // 5) Onboarding finished event from page
+                  if (data?.type === "rampkit:onboarding-finished") {
+                    try {
+                      props.onOnboardingFinished?.(data?.payload);
+                    } catch (_) {}
+                    props.onRequestClose();
+                    return;
+                  }
                   if (
                     data?.type === "rampkit:continue" ||
                     data?.type === "continue"
@@ -575,6 +721,37 @@ function Overlay(props: {
                     raw === "continue"
                   ) {
                     handleAdvance(i);
+                    return;
+                  }
+                  if (raw === "rampkit:request-review" || raw === "rampkit:review") {
+                    (async () => {
+                      try {
+                        const available = await StoreReview.isAvailableAsync();
+                        if (available && (await StoreReview.hasAction())) {
+                          await StoreReview.requestReview();
+                          return;
+                        }
+                        const url = StoreReview.storeUrl();
+                        if (url) {
+                          const writeUrl =
+                            Platform.OS === "ios"
+                              ? `${url}${url.includes("?") ? "&" : "?"}action=write-review`
+                              : url;
+                          await Linking.openURL(writeUrl);
+                        }
+                      } catch (_) {}
+                    })();
+                    return;
+                  }
+                  if (raw === "rampkit:request-notification-permission") {
+                    handleNotificationPermissionRequest(undefined);
+                    return;
+                  }
+                  if (raw === "rampkit:onboarding-finished") {
+                    try {
+                      props.onOnboardingFinished?.(undefined);
+                    } catch (_) {}
+                    props.onRequestClose();
                     return;
                   }
                   if (raw === "rampkit:goBack") {

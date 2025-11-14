@@ -1,5 +1,5 @@
 {
-  "name": "rampkit-expo",
+  "name": "rampkit-expo-dev",
   "version": "0.0.1",
   "main": "build/index.js",
   "types": "build/index.d.ts",
@@ -9,8 +9,17 @@
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "expo-haptics": "*",
+    "expo-store-review": "*",
+    "expo-notifications": "*",
+    "expo-secure-store": "*",
+    "expo-crypto": "*",
+    "react-native-webview": "*",
+    "react-native-pager-view": "*",
+    "react-native-root-siblings": "*"
   },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.9.3"
   }
