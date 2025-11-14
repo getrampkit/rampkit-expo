@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://rampkit-images.s3.amazonaws.com/logo.png" height="80" />
+  <img src="https://dqplcvw3fzili.cloudfront.net/rampkitlogo.png" height="80" />
 </p>
 
 <h1 align="center">RampKit Expo SDK</h1>
