@@ -17,7 +17,7 @@ class RampKitCore {
     async init(config) {
         this.config = config;
         this.onOnboardingFinished = config.onOnboardingFinished;
-        this.onShowPaywall = config.showPaywall;
+        this.onShowPaywall = config.onShowPaywall || config.showPaywall;
         try {
             // Ensure a stable, encrypted user id exists on first init
             this.userId = await (0, userId_1.getRampKitUserId)();
@@ -110,7 +110,7 @@ class RampKitCore {
                     }
                     catch (_) { }
                 },
-                onShowPaywall: (opts === null || opts === void 0 ? void 0 : opts.showPaywall) || this.onShowPaywall,
+                onShowPaywall: (opts === null || opts === void 0 ? void 0 : opts.onShowPaywall) || (opts === null || opts === void 0 ? void 0 : opts.showPaywall) || this.onShowPaywall,
             });
         }
         catch (e) {

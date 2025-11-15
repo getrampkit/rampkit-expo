@@ -12,11 +12,13 @@ export declare class RampKitCore {
         environment?: string;
         autoShowOnboarding?: boolean;
         onOnboardingFinished?: (payload?: any) => void;
+        onShowPaywall?: (payload?: any) => void;
         showPaywall?: (payload?: any) => void;
     }): Promise<void>;
     getOnboardingData(): any;
     getUserId(): string | null;
     showOnboarding(opts?: {
+        onShowPaywall?: (payload?: any) => void;
         showPaywall?: (payload?: any) => void;
     }): void;
 }
