@@ -149,15 +149,10 @@ export function hideRampkitOverlay() {
 }
 
 export function closeRampkitOverlay() {
-  // Try to drive the same animated close path as in the onboarding-finished event
-  try {
-    if (activeCloseHandler) {
-      activeCloseHandler();
-    }
-  } catch (_) {
-    // fall through to hard hide
+  if (activeCloseHandler) {
+    activeCloseHandler();
+    return;
   }
-  // Always fall back to a hard hide so the overlay is guaranteed to disappear
   hideRampkitOverlay();
 }
 
@@ -312,12 +307,15 @@ function Overlay(props: {
   const handleRequestClose = React.useCallback(() => {
     if (isClosing) return;
     setIsClosing(true);
-    Animated.timing(overlayOpacity, {
-      toValue: 0,
-      duration: 220,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start(() => {
+    Animated.sequence([
+      Animated.delay(150),
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
       props.onRequestClose();
     });
   }, [isClosing, overlayOpacity, props.onRequestClose]);

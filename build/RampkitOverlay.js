@@ -158,16 +158,10 @@ function hideRampkitOverlay() {
     activeCloseHandler = null;
 }
 function closeRampkitOverlay() {
-    // Try to drive the same animated close path as in the onboarding-finished event
-    try {
-        if (activeCloseHandler) {
-            activeCloseHandler();
-        }
+    if (activeCloseHandler) {
+        activeCloseHandler();
+        return;
     }
-    catch (_) {
-        // fall through to hard hide
-    }
-    // Always fall back to a hard hide so the overlay is guaranteed to disappear
     hideRampkitOverlay();
 }
 function preloadRampkitOverlay(opts) {
@@ -279,12 +273,15 @@ function Overlay(props) {
         if (isClosing)
             return;
         setIsClosing(true);
-        react_native_1.Animated.timing(overlayOpacity, {
-            toValue: 0,
-            duration: 220,
-            easing: react_native_1.Easing.out(react_native_1.Easing.cubic),
-            useNativeDriver: true,
-        }).start(() => {
+        react_native_1.Animated.sequence([
+            react_native_1.Animated.delay(150),
+            react_native_1.Animated.timing(overlayOpacity, {
+                toValue: 0,
+                duration: 320,
+                easing: react_native_1.Easing.out(react_native_1.Easing.cubic),
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
             props.onRequestClose();
         });
     }, [isClosing, overlayOpacity, props.onRequestClose]);
