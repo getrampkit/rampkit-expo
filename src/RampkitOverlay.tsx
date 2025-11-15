@@ -541,7 +541,7 @@ function Overlay(props: {
   }
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.root,
         !visible && styles.invisible,
@@ -864,7 +864,7 @@ function Overlay(props: {
           { opacity: fadeOpacity },
         ]}
       />
-    </View>
+    </Animated.View>
   );
 }
 

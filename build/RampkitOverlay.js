@@ -477,7 +477,7 @@ function Overlay(props) {
         }
         catch (_) { }
     }
-    return ((0, jsx_runtime_1.jsxs)(react_native_1.View, { style: [
+    return ((0, jsx_runtime_1.jsxs)(react_native_1.Animated.View, { style: [
             styles.root,
             !visible && styles.invisible,
             visible && { opacity: overlayOpacity },
