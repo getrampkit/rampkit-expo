@@ -280,10 +280,6 @@ function Overlay(props: {
   // Fade-in when overlay becomes visible
   React.useEffect(() => {
     if (visible && !isClosing) {
-      try {
-        overlayOpacity.stopAnimation();
-      } catch (_) {}
-      overlayOpacity.setValue(0);
       Animated.timing(overlayOpacity, {
         toValue: 1,
         duration: 220,
@@ -296,9 +292,6 @@ function Overlay(props: {
   const handleRequestClose = React.useCallback(() => {
     if (isClosing) return;
     setIsClosing(true);
-    try {
-      overlayOpacity.stopAnimation();
-    } catch (_) {}
     Animated.timing(overlayOpacity, {
       toValue: 0,
       duration: 220,

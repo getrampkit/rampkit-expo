@@ -248,11 +248,6 @@ function Overlay(props) {
     // Fade-in when overlay becomes visible
     react_1.default.useEffect(() => {
         if (visible && !isClosing) {
-            try {
-                overlayOpacity.stopAnimation();
-            }
-            catch (_) { }
-            overlayOpacity.setValue(0);
             react_native_1.Animated.timing(overlayOpacity, {
                 toValue: 1,
                 duration: 220,
@@ -265,10 +260,6 @@ function Overlay(props) {
         if (isClosing)
             return;
         setIsClosing(true);
-        try {
-            overlayOpacity.stopAnimation();
-        }
-        catch (_) { }
         react_native_1.Animated.timing(overlayOpacity, {
             toValue: 0,
             duration: 220,
