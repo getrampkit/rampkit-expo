@@ -158,10 +158,16 @@ function hideRampkitOverlay() {
     activeCloseHandler = null;
 }
 function closeRampkitOverlay() {
-    if (activeCloseHandler) {
-        activeCloseHandler();
-        return;
+    // Try to drive the same animated close path as in the onboarding-finished event
+    try {
+        if (activeCloseHandler) {
+            activeCloseHandler();
+        }
     }
+    catch (_) {
+        // fall through to hard hide
+    }
+    // Always fall back to a hard hide so the overlay is guaranteed to disappear
     hideRampkitOverlay();
 }
 function preloadRampkitOverlay(opts) {
