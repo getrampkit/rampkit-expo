@@ -117,6 +117,9 @@ class RampKitCore {
             console.log("[RampKit] ShowOnboarding: failed to show overlay", e);
         }
     }
+    closeOnboarding() {
+        (0, RampkitOverlay_1.closeRampkitOverlay)();
+    }
 }
 exports.RampKitCore = RampKitCore;
 RampKitCore.ONBOARDING_URL = "https://dqplcvw3fzili.cloudfront.net/labelaiOnboarding.json";

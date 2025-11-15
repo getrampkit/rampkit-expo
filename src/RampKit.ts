@@ -1,4 +1,8 @@
-import { preloadRampkitOverlay, showRampkitOverlay } from "./RampkitOverlay";
+import {
+  preloadRampkitOverlay,
+  showRampkitOverlay,
+  closeRampkitOverlay,
+} from "./RampkitOverlay";
 import { getRampKitUserId } from "./userId";
 
 export class RampKitCore {
@@ -133,5 +137,9 @@ export class RampKitCore {
     } catch (e) {
       console.log("[RampKit] ShowOnboarding: failed to show overlay", e);
     }
+  }
+
+  closeOnboarding() {
+    closeRampkitOverlay();
   }
 }

@@ -98,6 +98,7 @@ export type ScreenPayload = {
 let sibling: any | null = null;
 let preloadSibling: any | null = null;
 const preloadCache = new Map<string, string[]>();
+let activeCloseHandler: (() => void) | null = null;
 
 export function showRampkitOverlay(opts: {
   onboardingId: string;
@@ -120,11 +121,15 @@ export function showRampkitOverlay(opts: {
         requiredScripts={opts.requiredScripts}
         prebuiltDocs={prebuiltDocs}
         onRequestClose={() => {
+          activeCloseHandler = null;
           hideRampkitOverlay();
           opts.onClose?.();
         }}
         onOnboardingFinished={opts.onOnboardingFinished}
         onShowPaywall={opts.onShowPaywall}
+        onRegisterClose={(handler) => {
+          activeCloseHandler = handler;
+        }}
       />
     )
   );
@@ -140,6 +145,15 @@ export function hideRampkitOverlay() {
     sibling.destroy();
     sibling = null;
   }
+  activeCloseHandler = null;
+}
+
+export function closeRampkitOverlay() {
+  if (activeCloseHandler) {
+    activeCloseHandler();
+    return;
+  }
+  hideRampkitOverlay();
 }
 
 export function preloadRampkitOverlay(opts: {
@@ -259,6 +273,7 @@ function Overlay(props: {
   onRequestClose: () => void;
   onOnboardingFinished?: (payload?: any) => void;
   onShowPaywall?: (payload?: any) => void;
+  onRegisterClose?: (handler: (() => void) | null) => void;
 }) {
   const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
@@ -301,6 +316,13 @@ function Overlay(props: {
       props.onRequestClose();
     });
   }, [isClosing, overlayOpacity, props.onRequestClose]);
+
+  React.useEffect(() => {
+    props.onRegisterClose?.(handleRequestClose);
+    return () => {
+      props.onRegisterClose?.(null);
+    };
+  }, [handleRequestClose, props.onRegisterClose]);
 
   // Android hardware back goes to previous page, then closes
   const navigateToIndex = (nextIndex: number) => {

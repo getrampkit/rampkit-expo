@@ -21,4 +21,5 @@ export declare class RampKitCore {
         onShowPaywall?: (payload?: any) => void;
         showPaywall?: (payload?: any) => void;
     }): void;
+    closeOnboarding(): void;
 }

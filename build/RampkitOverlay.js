@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.injectedNoSelect = exports.injectedHardening = void 0;
 exports.showRampkitOverlay = showRampkitOverlay;
 exports.hideRampkitOverlay = hideRampkitOverlay;
+exports.closeRampkitOverlay = closeRampkitOverlay;
 exports.preloadRampkitOverlay = preloadRampkitOverlay;
 const jsx_runtime_1 = require("react/jsx-runtime");
 const react_1 = __importStar(require("react"));
@@ -129,6 +130,7 @@ exports.injectedNoSelect = `
 let sibling = null;
 let preloadSibling = null;
 const preloadCache = new Map();
+let activeCloseHandler = null;
 function showRampkitOverlay(opts) {
     console.log("showRampkitOverlay");
     if (sibling)
@@ -136,9 +138,12 @@ function showRampkitOverlay(opts) {
     const prebuiltDocs = preloadCache.get(opts.onboardingId);
     sibling = new react_native_root_siblings_1.default(((0, jsx_runtime_1.jsx)(Overlay, { onboardingId: opts.onboardingId, screens: opts.screens, variables: opts.variables, requiredScripts: opts.requiredScripts, prebuiltDocs: prebuiltDocs, onRequestClose: () => {
             var _a;
+            activeCloseHandler = null;
             hideRampkitOverlay();
             (_a = opts.onClose) === null || _a === void 0 ? void 0 : _a.call(opts);
-        }, onOnboardingFinished: opts.onOnboardingFinished, onShowPaywall: opts.onShowPaywall })));
+        }, onOnboardingFinished: opts.onOnboardingFinished, onShowPaywall: opts.onShowPaywall, onRegisterClose: (handler) => {
+            activeCloseHandler = handler;
+        } })));
     // Once shown, we can safely discard the preloader sibling if present
     if (preloadSibling) {
         preloadSibling.destroy();
@@ -150,6 +155,14 @@ function hideRampkitOverlay() {
         sibling.destroy();
         sibling = null;
     }
+    activeCloseHandler = null;
+}
+function closeRampkitOverlay() {
+    if (activeCloseHandler) {
+        activeCloseHandler();
+        return;
+    }
+    hideRampkitOverlay();
 }
 function preloadRampkitOverlay(opts) {
     try {
@@ -269,6 +282,14 @@ function Overlay(props) {
             props.onRequestClose();
         });
     }, [isClosing, overlayOpacity, props.onRequestClose]);
+    react_1.default.useEffect(() => {
+        var _a;
+        (_a = props.onRegisterClose) === null || _a === void 0 ? void 0 : _a.call(props, handleRequestClose);
+        return () => {
+            var _a;
+            (_a = props.onRegisterClose) === null || _a === void 0 ? void 0 : _a.call(props, null);
+        };
+    }, [handleRequestClose, props.onRegisterClose]);
     // Android hardware back goes to previous page, then closes
     const navigateToIndex = (nextIndex) => {
         if (nextIndex === index ||

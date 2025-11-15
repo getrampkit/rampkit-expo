@@ -16,6 +16,7 @@ export declare function showRampkitOverlay(opts: {
     onShowPaywall?: (payload?: any) => void;
 }): void;
 export declare function hideRampkitOverlay(): void;
+export declare function closeRampkitOverlay(): void;
 export declare function preloadRampkitOverlay(opts: {
     onboardingId: string;
     screens: ScreenPayload[];
@@ -31,5 +32,6 @@ declare function Overlay(props: {
     onRequestClose: () => void;
     onOnboardingFinished?: (payload?: any) => void;
     onShowPaywall?: (payload?: any) => void;
+    onRegisterClose?: (handler: (() => void) | null) => void;
 }): any;
 export default Overlay;
