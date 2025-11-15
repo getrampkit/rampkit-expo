@@ -13,7 +13,7 @@ export declare function showRampkitOverlay(opts: {
     requiredScripts?: string[];
     onClose?: () => void;
     onOnboardingFinished?: (payload?: any) => void;
-    onShowPaywall?: () => void;
+    onShowPaywall?: (payload?: any) => void;
 }): void;
 export declare function hideRampkitOverlay(): void;
 export declare function preloadRampkitOverlay(opts: {
@@ -30,6 +30,6 @@ declare function Overlay(props: {
     prebuiltDocs?: string[];
     onRequestClose: () => void;
     onOnboardingFinished?: (payload?: any) => void;
-    onShowPaywall?: () => void;
+    onShowPaywall?: (payload?: any) => void;
 }): any;
 export default Overlay;

@@ -579,7 +579,7 @@ function Overlay(props) {
                                 // 6) Request to show paywall
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:show-paywall") {
                                     try {
-                                        (_b = props.onShowPaywall) === null || _b === void 0 ? void 0 : _b.call(props);
+                                        (_b = props.onShowPaywall) === null || _b === void 0 ? void 0 : _b.call(props, data === null || data === void 0 ? void 0 : data.payload);
                                     }
                                     catch (_) { }
                                     return;

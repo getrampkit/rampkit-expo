@@ -106,7 +106,7 @@ export function showRampkitOverlay(opts: {
   requiredScripts?: string[];
   onClose?: () => void;
   onOnboardingFinished?: (payload?: any) => void;
-  onShowPaywall?: () => void;
+  onShowPaywall?: (payload?: any) => void;
 }) {
   console.log("showRampkitOverlay");
   if (sibling) return; // already visible
@@ -258,7 +258,7 @@ function Overlay(props: {
   prebuiltDocs?: string[];
   onRequestClose: () => void;
   onOnboardingFinished?: (payload?: any) => void;
-  onShowPaywall?: () => void;
+  onShowPaywall?: (payload?: any) => void;
 }) {
   const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
@@ -701,7 +701,7 @@ function Overlay(props: {
                   // 6) Request to show paywall
                   if (data?.type === "rampkit:show-paywall") {
                     try {
-                      props.onShowPaywall?.();
+                      props.onShowPaywall?.(data?.payload);
                     } catch (_) {}
                     return;
                   }

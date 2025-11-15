@@ -22,7 +22,7 @@ export class RampKitCore {
     environment?: string;
     autoShowOnboarding?: boolean;
     onOnboardingFinished?: (payload?: any) => void;
-    showPaywall?: () => void;
+    showPaywall?: (payload?: any) => void;
   }) {
     this.config = config;
     this.onOnboardingFinished = config.onOnboardingFinished;
@@ -68,7 +68,7 @@ export class RampKitCore {
     return this.userId;
   }
 
-  showOnboarding(opts?: { showPaywall?: () => void }) {
+  showOnboarding(opts?: { showPaywall?: (payload?: any) => void }) {
     const data = this.onboardingData;
     if (!data || !Array.isArray(data.screens) || data.screens.length === 0) {
       console.log("[RampKit] ShowOnboarding: no onboarding data available");
