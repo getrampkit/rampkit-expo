@@ -7,6 +7,7 @@ export class RampKitCore {
   private onboardingData: any = null;
   private userId: string | null = null;
   private onOnboardingFinished?: (payload?: any) => void;
+  private onShowPaywall?: () => void;
 
   private static readonly ONBOARDING_URL =
     "https://dqplcvw3fzili.cloudfront.net/labelaiOnboarding.json";
@@ -21,9 +22,11 @@ export class RampKitCore {
     environment?: string;
     autoShowOnboarding?: boolean;
     onOnboardingFinished?: (payload?: any) => void;
+    showPaywall?: () => void;
   }) {
     this.config = config;
     this.onOnboardingFinished = config.onOnboardingFinished;
+    this.onShowPaywall = config.showPaywall;
     try {
       // Ensure a stable, encrypted user id exists on first init
       this.userId = await getRampKitUserId();
@@ -65,7 +68,7 @@ export class RampKitCore {
     return this.userId;
   }
 
-  showOnboarding() {
+  showOnboarding(opts?: { showPaywall?: () => void }) {
     const data = this.onboardingData;
     if (!data || !Array.isArray(data.screens) || data.screens.length === 0) {
       console.log("[RampKit] ShowOnboarding: no onboarding data available");
@@ -120,6 +123,7 @@ export class RampKitCore {
             this.onOnboardingFinished?.(payload);
           } catch (_) {}
         },
+        onShowPaywall: opts?.showPaywall || this.onShowPaywall,
       });
     } catch (e) {
       console.log("[RampKit] ShowOnboarding: failed to show overlay", e);

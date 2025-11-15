@@ -138,7 +138,7 @@ function showRampkitOverlay(opts) {
             var _a;
             hideRampkitOverlay();
             (_a = opts.onClose) === null || _a === void 0 ? void 0 : _a.call(opts);
-        }, onOnboardingFinished: opts.onOnboardingFinished })));
+        }, onOnboardingFinished: opts.onOnboardingFinished, onShowPaywall: opts.onShowPaywall })));
     // Once shown, we can safely discard the preloader sibling if present
     if (preloadSibling) {
         preloadSibling.destroy();
@@ -235,6 +235,8 @@ function Overlay(props) {
     const [firstPageLoaded, setFirstPageLoaded] = (0, react_1.useState)(false);
     const [visible, setVisible] = (0, react_1.useState)(false);
     const [isTransitioning, setIsTransitioning] = (0, react_1.useState)(false);
+    const [isClosing, setIsClosing] = (0, react_1.useState)(false);
+    const overlayOpacity = (0, react_1.useRef)(new react_native_1.Animated.Value(0)).current;
     const fadeOpacity = (0, react_1.useRef)(new react_native_1.Animated.Value(0)).current;
     const allLoaded = loadedCount >= props.screens.length;
     // shared vars across all webviews
@@ -243,6 +245,39 @@ function Overlay(props) {
     const webviewsRef = (0, react_1.useRef)([]);
     // track when we last initialized a given page with host vars (to filter stale defaults)
     const lastInitSendRef = (0, react_1.useRef)([]);
+    // Fade-in when overlay becomes visible
+    react_1.default.useEffect(() => {
+        if (visible && !isClosing) {
+            try {
+                overlayOpacity.stopAnimation();
+            }
+            catch (_) { }
+            overlayOpacity.setValue(0);
+            react_native_1.Animated.timing(overlayOpacity, {
+                toValue: 1,
+                duration: 220,
+                easing: react_native_1.Easing.out(react_native_1.Easing.cubic),
+                useNativeDriver: true,
+            }).start();
+        }
+    }, [visible, isClosing, overlayOpacity]);
+    const handleRequestClose = react_1.default.useCallback(() => {
+        if (isClosing)
+            return;
+        setIsClosing(true);
+        try {
+            overlayOpacity.stopAnimation();
+        }
+        catch (_) { }
+        react_native_1.Animated.timing(overlayOpacity, {
+            toValue: 0,
+            duration: 220,
+            easing: react_native_1.Easing.out(react_native_1.Easing.cubic),
+            useNativeDriver: true,
+        }).start(() => {
+            props.onRequestClose();
+        });
+    }, [isClosing, overlayOpacity, props.onRequestClose]);
     // Android hardware back goes to previous page, then closes
     const navigateToIndex = (nextIndex) => {
         if (nextIndex === index ||
@@ -312,11 +347,11 @@ function Overlay(props) {
                 navigateToIndex(index - 1);
                 return true;
             }
-            props.onRequestClose();
+            handleRequestClose();
             return true;
         });
         return () => sub.remove();
-    }, [index, props.onRequestClose]);
+    }, [index, handleRequestClose]);
     const docs = (0, react_1.useMemo)(() => props.prebuiltDocs ||
         props.screens.map((s) => buildHtmlDocument(s, props.variables, props.requiredScripts)), [props.prebuiltDocs, props.screens, props.variables, props.requiredScripts]);
     react_1.default.useEffect(() => {
@@ -364,7 +399,7 @@ function Overlay(props) {
         else {
             // finish
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-            props.onRequestClose();
+            handleRequestClose();
         }
     };
     async function handleNotificationPermissionRequest(payload) {
@@ -451,7 +486,11 @@ function Overlay(props) {
         }
         catch (_) { }
     }
-    return ((0, jsx_runtime_1.jsxs)(react_native_1.View, { style: [styles.root, !visible && styles.invisible], pointerEvents: visible ? "auto" : "none", children: [(0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, onLoadEnd: () => {
+    return ((0, jsx_runtime_1.jsxs)(react_native_1.View, { style: [
+            styles.root,
+            !visible && styles.invisible,
+            visible && { opacity: overlayOpacity },
+        ], pointerEvents: visible && !isClosing ? "auto" : "none", children: [(0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, onLoadEnd: () => {
                             setLoadedCount((c) => c + 1);
                             if (i === 0)
                                 setFirstPageLoaded(true);
@@ -460,7 +499,7 @@ function Overlay(props) {
                                 console.log("[Rampkit] onLoadEnd init send vars", i);
                             sendVarsToWebView(i);
                         }, onMessage: (ev) => {
-                            var _a, _b;
+                            var _a, _b, _c, _d;
                             const raw = ev.nativeEvent.data;
                             console.log("raw", raw);
                             // Accept either raw strings or JSON payloads from your editor
@@ -543,7 +582,15 @@ function Overlay(props) {
                                         (_a = props.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(props, data === null || data === void 0 ? void 0 : data.payload);
                                     }
                                     catch (_) { }
-                                    props.onRequestClose();
+                                    handleRequestClose();
+                                    return;
+                                }
+                                // 6) Request to show paywall
+                                if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:show-paywall") {
+                                    try {
+                                        (_b = props.onShowPaywall) === null || _b === void 0 ? void 0 : _b.call(props);
+                                    }
+                                    catch (_) { }
                                     return;
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:continue" ||
@@ -558,7 +605,7 @@ function Overlay(props) {
                                             navigateToIndex(i - 1);
                                         }
                                         else {
-                                            props.onRequestClose();
+                                            handleRequestClose();
                                         }
                                         return;
                                     }
@@ -580,12 +627,12 @@ function Overlay(props) {
                                         navigateToIndex(i - 1);
                                     }
                                     else {
-                                        props.onRequestClose();
+                                        handleRequestClose();
                                     }
                                     return;
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:close") {
-                                    props.onRequestClose();
+                                    handleRequestClose();
                                     return;
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:haptic") {
@@ -593,7 +640,7 @@ function Overlay(props) {
                                     return;
                                 }
                             }
-                            catch (_c) {
+                            catch (_e) {
                                 // String path
                                 if (raw === "rampkit:tap" ||
                                     raw === "next" ||
@@ -627,10 +674,17 @@ function Overlay(props) {
                                 }
                                 if (raw === "rampkit:onboarding-finished") {
                                     try {
-                                        (_b = props.onOnboardingFinished) === null || _b === void 0 ? void 0 : _b.call(props, undefined);
+                                        (_c = props.onOnboardingFinished) === null || _c === void 0 ? void 0 : _c.call(props, undefined);
                                     }
                                     catch (_) { }
-                                    props.onRequestClose();
+                                    handleRequestClose();
+                                    return;
+                                }
+                                if (raw === "rampkit:show-paywall") {
+                                    try {
+                                        (_d = props.onShowPaywall) === null || _d === void 0 ? void 0 : _d.call(props);
+                                    }
+                                    catch (_) { }
                                     return;
                                 }
                                 if (raw === "rampkit:goBack") {
@@ -638,7 +692,7 @@ function Overlay(props) {
                                         navigateToIndex(i - 1);
                                     }
                                     else {
-                                        props.onRequestClose();
+                                        handleRequestClose();
                                     }
                                     return;
                                 }
@@ -649,7 +703,7 @@ function Overlay(props) {
                                             navigateToIndex(i - 1);
                                         }
                                         else {
-                                            props.onRequestClose();
+                                            handleRequestClose();
                                         }
                                         return;
                                     }
@@ -667,7 +721,7 @@ function Overlay(props) {
                                     return;
                                 }
                                 if (raw === "rampkit:close") {
-                                    props.onRequestClose();
+                                    handleRequestClose();
                                     return;
                                 }
                                 if (raw.startsWith("haptic:")) {

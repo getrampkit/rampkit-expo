@@ -17,6 +17,7 @@ class RampKitCore {
     async init(config) {
         this.config = config;
         this.onOnboardingFinished = config.onOnboardingFinished;
+        this.onShowPaywall = config.showPaywall;
         try {
             // Ensure a stable, encrypted user id exists on first init
             this.userId = await (0, userId_1.getRampKitUserId)();
@@ -56,7 +57,7 @@ class RampKitCore {
     getUserId() {
         return this.userId;
     }
-    showOnboarding() {
+    showOnboarding(opts) {
         const data = this.onboardingData;
         if (!data || !Array.isArray(data.screens) || data.screens.length === 0) {
             console.log("[RampKit] ShowOnboarding: no onboarding data available");
@@ -109,6 +110,7 @@ class RampKitCore {
                     }
                     catch (_) { }
                 },
+                onShowPaywall: (opts === null || opts === void 0 ? void 0 : opts.showPaywall) || this.onShowPaywall,
             });
         }
         catch (e) {

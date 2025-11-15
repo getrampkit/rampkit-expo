@@ -106,6 +106,7 @@ export function showRampkitOverlay(opts: {
   requiredScripts?: string[];
   onClose?: () => void;
   onOnboardingFinished?: (payload?: any) => void;
+  onShowPaywall?: () => void;
 }) {
   console.log("showRampkitOverlay");
   if (sibling) return; // already visible
@@ -123,6 +124,7 @@ export function showRampkitOverlay(opts: {
           opts.onClose?.();
         }}
         onOnboardingFinished={opts.onOnboardingFinished}
+        onShowPaywall={opts.onShowPaywall}
       />
     )
   );
@@ -256,6 +258,7 @@ function Overlay(props: {
   prebuiltDocs?: string[];
   onRequestClose: () => void;
   onOnboardingFinished?: (payload?: any) => void;
+  onShowPaywall?: () => void;
 }) {
   const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
@@ -263,6 +266,8 @@ function Overlay(props: {
   const [firstPageLoaded, setFirstPageLoaded] = useState(false);
   const [visible, setVisible] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
   const fadeOpacity = useRef(new Animated.Value(0)).current;
   const allLoaded = loadedCount >= props.screens.length;
   // shared vars across all webviews
@@ -271,6 +276,38 @@ function Overlay(props: {
   const webviewsRef = useRef([] as any[]);
   // track when we last initialized a given page with host vars (to filter stale defaults)
   const lastInitSendRef = useRef([] as number[]);
+
+  // Fade-in when overlay becomes visible
+  React.useEffect(() => {
+    if (visible && !isClosing) {
+      try {
+        overlayOpacity.stopAnimation();
+      } catch (_) {}
+      overlayOpacity.setValue(0);
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, isClosing, overlayOpacity]);
+
+  const handleRequestClose = React.useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    try {
+      overlayOpacity.stopAnimation();
+    } catch (_) {}
+    Animated.timing(overlayOpacity, {
+      toValue: 0,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      props.onRequestClose();
+    });
+  }, [isClosing, overlayOpacity, props.onRequestClose]);
 
   // Android hardware back goes to previous page, then closes
   const navigateToIndex = (nextIndex: number) => {
@@ -346,11 +383,11 @@ function Overlay(props: {
         navigateToIndex(index - 1);
         return true;
       }
-      props.onRequestClose();
+      handleRequestClose();
       return true;
     });
     return () => sub.remove();
-  }, [index, props.onRequestClose]);
+  }, [index, handleRequestClose]);
 
   const docs = useMemo(
     () =>
@@ -406,7 +443,7 @@ function Overlay(props: {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {}
       );
-      props.onRequestClose();
+      handleRequestClose();
     }
   };
 
@@ -512,8 +549,12 @@ function Overlay(props: {
 
   return (
     <View
-      style={[styles.root, !visible && styles.invisible]}
-      pointerEvents={visible ? "auto" : "none"}
+      style={[
+        styles.root,
+        !visible && styles.invisible,
+        visible && { opacity: overlayOpacity },
+      ]}
+      pointerEvents={visible && !isClosing ? "auto" : "none"}
     >
       <PagerView
         ref={pagerRef}
@@ -661,7 +702,14 @@ function Overlay(props: {
                     try {
                       props.onOnboardingFinished?.(data?.payload);
                     } catch (_) {}
-                    props.onRequestClose();
+                    handleRequestClose();
+                    return;
+                  }
+                  // 6) Request to show paywall
+                  if (data?.type === "rampkit:show-paywall") {
+                    try {
+                      props.onShowPaywall?.();
+                    } catch (_) {}
                     return;
                   }
                   if (
@@ -677,7 +725,7 @@ function Overlay(props: {
                       if (i > 0) {
                         navigateToIndex(i - 1);
                       } else {
-                        props.onRequestClose();
+                        handleRequestClose();
                       }
                       return;
                     }
@@ -699,12 +747,12 @@ function Overlay(props: {
                     if (i > 0) {
                       navigateToIndex(i - 1);
                     } else {
-                      props.onRequestClose();
+                      handleRequestClose();
                     }
                     return;
                   }
                   if (data?.type === "rampkit:close") {
-                    props.onRequestClose();
+                    handleRequestClose();
                     return;
                   }
                   if (data?.type === "rampkit:haptic") {
@@ -751,14 +799,20 @@ function Overlay(props: {
                     try {
                       props.onOnboardingFinished?.(undefined);
                     } catch (_) {}
-                    props.onRequestClose();
+                    handleRequestClose();
+                    return;
+                  }
+                  if (raw === "rampkit:show-paywall") {
+                    try {
+                      props.onShowPaywall?.();
+                    } catch (_) {}
                     return;
                   }
                   if (raw === "rampkit:goBack") {
                     if (i > 0) {
                       navigateToIndex(i - 1);
                     } else {
-                      props.onRequestClose();
+                      handleRequestClose();
                     }
                     return;
                   }
@@ -768,7 +822,7 @@ function Overlay(props: {
                       if (i > 0) {
                         navigateToIndex(i - 1);
                       } else {
-                        props.onRequestClose();
+                        handleRequestClose();
                       }
                       return;
                     }
@@ -787,7 +841,7 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:close") {
-                    props.onRequestClose();
+                    handleRequestClose();
                     return;
                   }
                   if (raw.startsWith("haptic:")) {
