@@ -95,6 +95,84 @@ export type ScreenPayload = {
   js?: string;
 };
 
+type RampkitHapticEvent = {
+  type: "rampkit:haptic";
+  nodeId: string | null;
+  nodeType: string | null;
+  animation: string; // "none" | "fade" | "spring" | "shrink"...
+  action: "haptic";
+  hapticType: "impact" | "notification" | "selection";
+  impactStyle: "Light" | "Medium" | "Heavy" | "Rigid" | "Soft" | null;
+  notificationType: "Success" | "Warning" | "Error" | null;
+  timestamp: number;
+};
+
+function performRampkitHaptic(event: RampkitHapticEvent | any) {
+  if (!event || event.action !== "haptic") {
+    // Backwards compatible default
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    } catch (_) {}
+    return;
+  }
+
+  const hapticType = event.hapticType;
+
+  try {
+    if (hapticType === "impact") {
+      const styleMap = {
+        Light: Haptics.ImpactFeedbackStyle.Light,
+        Medium: Haptics.ImpactFeedbackStyle.Medium,
+        Heavy: Haptics.ImpactFeedbackStyle.Heavy,
+        Rigid: Haptics.ImpactFeedbackStyle.Rigid,
+        Soft: Haptics.ImpactFeedbackStyle.Soft,
+      };
+      const impactStyle =
+        event.impactStyle &&
+        (styleMap as any)[event.impactStyle as keyof typeof styleMap]
+          ? (event.impactStyle as keyof typeof styleMap)
+          : "Medium";
+      const style =
+        (impactStyle && (styleMap as any)[impactStyle]) ||
+        Haptics.ImpactFeedbackStyle.Medium;
+      Haptics.impactAsync(style).catch(() => {});
+      return;
+    }
+
+    if (hapticType === "notification") {
+      const notificationMap = {
+        Success: Haptics.NotificationFeedbackType.Success,
+        Warning: Haptics.NotificationFeedbackType.Warning,
+        Error: Haptics.NotificationFeedbackType.Error,
+      };
+      const notificationType =
+        event.notificationType &&
+        (notificationMap as any)[
+          event.notificationType as keyof typeof notificationMap
+        ]
+          ? (event.notificationType as keyof typeof notificationMap)
+          : "Success";
+      const style =
+        (notificationType && (notificationMap as any)[notificationType]) ||
+        Haptics.NotificationFeedbackType.Success;
+      Haptics.notificationAsync(style).catch(() => {});
+      return;
+    }
+
+    if (hapticType === "selection") {
+      Haptics.selectionAsync().catch(() => {});
+      return;
+    }
+
+    // Fallback for unknown hapticType
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  } catch (_) {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    } catch (__ ) {}
+  }
+}
+
 let sibling: any | null = null;
 let preloadSibling: any | null = null;
 const preloadCache = new Map<string, string[]>();
@@ -774,9 +852,7 @@ function Overlay(props: {
                     return;
                   }
                   if (data?.type === "rampkit:haptic") {
-                    Haptics.impactAsync(
-                      Haptics.ImpactFeedbackStyle.Medium
-                    ).catch(() => {});
+                    performRampkitHaptic(data as RampkitHapticEvent);
                     return;
                   }
                 } catch {
@@ -863,9 +939,17 @@ function Overlay(props: {
                     return;
                   }
                   if (raw.startsWith("haptic:")) {
-                    Haptics.impactAsync(
-                      Haptics.ImpactFeedbackStyle.Medium
-                    ).catch(() => {});
+                    performRampkitHaptic({
+                      type: "rampkit:haptic",
+                      nodeId: null,
+                      nodeType: null,
+                      animation: "none",
+                      action: "haptic",
+                      hapticType: "impact",
+                      impactStyle: "Medium",
+                      notificationType: null,
+                      timestamp: Date.now(),
+                    } as RampkitHapticEvent);
                     return;
                   }
                 }

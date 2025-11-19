@@ -127,6 +127,63 @@ exports.injectedNoSelect = `
   true;
 })();
 `;
+function performRampkitHaptic(event) {
+    if (!event || event.action !== "haptic") {
+        // Backwards compatible default
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+        }
+        catch (_) { }
+        return;
+    }
+    const hapticType = event.hapticType;
+    try {
+        if (hapticType === "impact") {
+            const styleMap = {
+                Light: Haptics.ImpactFeedbackStyle.Light,
+                Medium: Haptics.ImpactFeedbackStyle.Medium,
+                Heavy: Haptics.ImpactFeedbackStyle.Heavy,
+                Rigid: Haptics.ImpactFeedbackStyle.Rigid,
+                Soft: Haptics.ImpactFeedbackStyle.Soft,
+            };
+            const impactStyle = event.impactStyle &&
+                styleMap[event.impactStyle]
+                ? event.impactStyle
+                : "Medium";
+            const style = (impactStyle && styleMap[impactStyle]) ||
+                Haptics.ImpactFeedbackStyle.Medium;
+            Haptics.impactAsync(style).catch(() => { });
+            return;
+        }
+        if (hapticType === "notification") {
+            const notificationMap = {
+                Success: Haptics.NotificationFeedbackType.Success,
+                Warning: Haptics.NotificationFeedbackType.Warning,
+                Error: Haptics.NotificationFeedbackType.Error,
+            };
+            const notificationType = event.notificationType &&
+                notificationMap[event.notificationType]
+                ? event.notificationType
+                : "Success";
+            const style = (notificationType && notificationMap[notificationType]) ||
+                Haptics.NotificationFeedbackType.Success;
+            Haptics.notificationAsync(style).catch(() => { });
+            return;
+        }
+        if (hapticType === "selection") {
+            Haptics.selectionAsync().catch(() => { });
+            return;
+        }
+        // Fallback for unknown hapticType
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+    }
+    catch (_) {
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+        }
+        catch (__) { }
+    }
+}
 let sibling = null;
 let preloadSibling = null;
 const preloadCache = new Map();
@@ -651,7 +708,7 @@ function Overlay(props) {
                                     return;
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:haptic") {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+                                    performRampkitHaptic(data);
                                     return;
                                 }
                             }
@@ -740,7 +797,17 @@ function Overlay(props) {
                                     return;
                                 }
                                 if (raw.startsWith("haptic:")) {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+                                    performRampkitHaptic({
+                                        type: "rampkit:haptic",
+                                        nodeId: null,
+                                        nodeType: null,
+                                        animation: "none",
+                                        action: "haptic",
+                                        hapticType: "impact",
+                                        impactStyle: "Medium",
+                                        notificationType: null,
+                                        timestamp: Date.now(),
+                                    });
                                     return;
                                 }
                             }
