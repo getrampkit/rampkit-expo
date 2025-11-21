@@ -272,6 +272,7 @@ export function preloadRampkitOverlay(opts: {
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
           cacheEnabled
+          hideKeyboardAccessoryView={true}
         />
       </View>
     );
@@ -688,6 +689,7 @@ function Overlay(props: {
               cacheEnabled
               javaScriptEnabled
               domStorageEnabled
+              hideKeyboardAccessoryView={true}
               onLoadEnd={() => {
                 setLoadedCount((c: number) => c + 1);
                 if (i === 0) setFirstPageLoaded(true);
