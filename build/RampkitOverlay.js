@@ -477,10 +477,10 @@ function Overlay(props) {
             console.log("[Rampkit] onPageSelected", pos);
         sendVarsToWebView(pos);
     };
-    const handleAdvance = (i) => {
+    const handleAdvance = (i, animation = "fade") => {
         const last = props.screens.length - 1;
         if (i < last) {
-            navigateToIndex(i + 1);
+            navigateToIndex(i + 1, animation);
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
         }
         else {
@@ -682,7 +682,7 @@ function Overlay(props) {
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:continue" ||
                                     (data === null || data === void 0 ? void 0 : data.type) === "continue") {
-                                    handleAdvance(i);
+                                    handleAdvance(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                     return;
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:navigate") {
@@ -697,7 +697,7 @@ function Overlay(props) {
                                         return;
                                     }
                                     if (!target || target === "__continue__") {
-                                        handleAdvance(i);
+                                        handleAdvance(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                         return;
                                     }
                                     const targetIndex = props.screens.findIndex((s) => s.id === target);

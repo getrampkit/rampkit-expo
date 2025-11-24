@@ -545,10 +545,10 @@ function Overlay(props: {
     sendVarsToWebView(pos);
   };
 
-  const handleAdvance = (i: number) => {
+  const handleAdvance = (i: number, animation: string = "fade") => {
     const last = props.screens.length - 1;
     if (i < last) {
-      navigateToIndex(i + 1);
+      navigateToIndex(i + 1, animation);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } else {
       // finish
@@ -829,7 +829,7 @@ function Overlay(props: {
                     data?.type === "rampkit:continue" ||
                     data?.type === "continue"
                   ) {
-                    handleAdvance(i);
+                    handleAdvance(i, data?.animation || "fade");
                     return;
                   }
                   if (data?.type === "rampkit:navigate") {
@@ -843,7 +843,7 @@ function Overlay(props: {
                       return;
                     }
                     if (!target || target === "__continue__") {
-                      handleAdvance(i);
+                      handleAdvance(i, data?.animation || "fade");
                       return;
                     }
                     const targetIndex = props.screens.findIndex(
