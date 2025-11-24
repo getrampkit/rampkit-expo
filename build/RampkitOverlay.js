@@ -351,13 +351,28 @@ function Overlay(props) {
         };
     }, [handleRequestClose, props.onRegisterClose]);
     // Android hardware back goes to previous page, then closes
-    const navigateToIndex = (nextIndex) => {
+    const navigateToIndex = (nextIndex, animation = "fade") => {
         if (nextIndex === index ||
             nextIndex < 0 ||
             nextIndex >= props.screens.length)
             return;
         if (isTransitioning)
             return;
+        // Slide animation: use PagerView's built-in animated page change
+        // and skip the fade curtain overlay.
+        if (animation === "slide") {
+            // @ts-ignore: methods exist on PagerView instance
+            const pager = pagerRef.current;
+            if (!pager)
+                return;
+            if (typeof pager.setPage === "function") {
+                pager.setPage(nextIndex);
+            }
+            else if (typeof pager.setPageWithoutAnimation === "function") {
+                pager.setPageWithoutAnimation(nextIndex);
+            }
+            return;
+        }
         setIsTransitioning(true);
         react_native_1.Animated.timing(fadeOpacity, {
             toValue: 1,
@@ -674,7 +689,7 @@ function Overlay(props) {
                                     const target = data === null || data === void 0 ? void 0 : data.targetScreenId;
                                     if (target === "__goBack__") {
                                         if (i > 0) {
-                                            navigateToIndex(i - 1);
+                                            navigateToIndex(i - 1, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                         }
                                         else {
                                             handleRequestClose();
@@ -687,7 +702,7 @@ function Overlay(props) {
                                     }
                                     const targetIndex = props.screens.findIndex((s) => s.id === target);
                                     if (targetIndex >= 0) {
-                                        navigateToIndex(targetIndex);
+                                        navigateToIndex(targetIndex, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                     }
                                     else {
                                         handleAdvance(i);
@@ -696,7 +711,7 @@ function Overlay(props) {
                                 }
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:goBack") {
                                     if (i > 0) {
-                                        navigateToIndex(i - 1);
+                                        navigateToIndex(i - 1, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                     }
                                     else {
                                         handleRequestClose();
