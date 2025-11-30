@@ -10,11 +10,12 @@ export class RampKitCore {
   private config: any = {};
   private onboardingData: any = null;
   private userId: string | null = null;
+  private appId: string | null = null;
   private onOnboardingFinished?: (payload?: any) => void;
   private onShowPaywall?: (payload?: any) => void;
 
-  private static readonly ONBOARDING_URL =
-    "https://dqplcvw3fzili.cloudfront.net/labelaiOnboarding.json";
+  private static readonly MANIFEST_BASE_URL =
+    "https://dh1psiwzzzkgr.cloudfront.net";
 
   static get instance() {
     if (!this._instance) this._instance = new RampKitCore();
@@ -22,7 +23,8 @@ export class RampKitCore {
   }
 
   async init(config: {
-    apiKey: string;
+    appId: string;
+    apiKey?: string;
     environment?: string;
     autoShowOnboarding?: boolean;
     onOnboardingFinished?: (payload?: any) => void;
@@ -30,6 +32,7 @@ export class RampKitCore {
     showPaywall?: (payload?: any) => void;
   }) {
     this.config = config;
+    this.appId = config.appId;
     this.onOnboardingFinished = config.onOnboardingFinished;
     this.onShowPaywall = config.onShowPaywall || config.showPaywall;
     try {
@@ -41,10 +44,23 @@ export class RampKitCore {
     }
     console.log("[RampKit] Init: starting onboarding load");
     try {
-      const response = await (globalThis as any).fetch(
-        RampKitCore.ONBOARDING_URL
-      );
-      const json = await response.json();
+      // First, fetch the app manifest to get the onboarding URL
+      const manifestUrl = `${RampKitCore.MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
+      console.log("[RampKit] Init: fetching manifest from", manifestUrl);
+      const manifestResponse = await (globalThis as any).fetch(manifestUrl);
+      const manifest = await manifestResponse.json();
+      
+      if (!manifest.onboardings || manifest.onboardings.length === 0) {
+        throw new Error("No onboardings found in manifest");
+      }
+      
+      // Use the first onboarding
+      const firstOnboarding = manifest.onboardings[0];
+      console.log("[RampKit] Init: using onboarding", firstOnboarding.name, firstOnboarding.id);
+      
+      // Fetch the actual onboarding data
+      const onboardingResponse = await (globalThis as any).fetch(firstOnboarding.url);
+      const json = await onboardingResponse.json();
       this.onboardingData = json;
       try {
         console.log("[RampKit] Init: onboardingId", json && json.onboardingId);

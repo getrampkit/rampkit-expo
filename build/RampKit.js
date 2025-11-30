@@ -8,6 +8,7 @@ class RampKitCore {
         this.config = {};
         this.onboardingData = null;
         this.userId = null;
+        this.appId = null;
     }
     static get instance() {
         if (!this._instance)
@@ -16,6 +17,7 @@ class RampKitCore {
     }
     async init(config) {
         this.config = config;
+        this.appId = config.appId;
         this.onOnboardingFinished = config.onOnboardingFinished;
         this.onShowPaywall = config.onShowPaywall || config.showPaywall;
         try {
@@ -28,8 +30,20 @@ class RampKitCore {
         }
         console.log("[RampKit] Init: starting onboarding load");
         try {
-            const response = await globalThis.fetch(RampKitCore.ONBOARDING_URL);
-            const json = await response.json();
+            // First, fetch the app manifest to get the onboarding URL
+            const manifestUrl = `${RampKitCore.MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
+            console.log("[RampKit] Init: fetching manifest from", manifestUrl);
+            const manifestResponse = await globalThis.fetch(manifestUrl);
+            const manifest = await manifestResponse.json();
+            if (!manifest.onboardings || manifest.onboardings.length === 0) {
+                throw new Error("No onboardings found in manifest");
+            }
+            // Use the first onboarding
+            const firstOnboarding = manifest.onboardings[0];
+            console.log("[RampKit] Init: using onboarding", firstOnboarding.name, firstOnboarding.id);
+            // Fetch the actual onboarding data
+            const onboardingResponse = await globalThis.fetch(firstOnboarding.url);
+            const json = await onboardingResponse.json();
             this.onboardingData = json;
             try {
                 console.log("[RampKit] Init: onboardingId", json && json.onboardingId);
@@ -122,4 +136,4 @@ class RampKitCore {
     }
 }
 exports.RampKitCore = RampKitCore;
-RampKitCore.ONBOARDING_URL = "https://dqplcvw3fzili.cloudfront.net/labelaiOnboarding.json";
+RampKitCore.MANIFEST_BASE_URL = "https://dh1psiwzzzkgr.cloudfront.net";

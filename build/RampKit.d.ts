@@ -3,12 +3,14 @@ export declare class RampKitCore {
     private config;
     private onboardingData;
     private userId;
+    private appId;
     private onOnboardingFinished?;
     private onShowPaywall?;
-    private static readonly ONBOARDING_URL;
+    private static readonly MANIFEST_BASE_URL;
     static get instance(): RampKitCore;
     init(config: {
-        apiKey: string;
+        appId: string;
+        apiKey?: string;
         environment?: string;
         autoShowOnboarding?: boolean;
         onOnboardingFinished?: (payload?: any) => void;
