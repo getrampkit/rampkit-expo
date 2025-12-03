@@ -124,15 +124,15 @@ public class RampKitModule: Module {
       "deviceName": device.model,
       "isSimulator": isSimulator(),
       
-      // Locale
-      "deviceLanguageCode": locale.language.languageCode?.identifier,
+      // Locale (using legacy APIs for iOS 13+ compatibility)
+      "deviceLanguageCode": locale.languageCode,
       "deviceLocale": locale.identifier,
-      "regionCode": locale.region?.identifier,
+      "regionCode": locale.regionCode,
       "preferredLanguage": locales.first,
       "preferredLanguages": locales,
       
       // Currency
-      "deviceCurrencyCode": locale.currency?.identifier,
+      "deviceCurrencyCode": locale.currencyCode,
       "deviceCurrencySymbol": locale.currencySymbol,
       
       // Timezone
