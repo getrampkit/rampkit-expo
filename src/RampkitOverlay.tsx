@@ -5,9 +5,7 @@ import PagerView, {
   PagerViewOnPageSelectedEvent,
 } from "react-native-pager-view";
 import { WebView } from "react-native-webview";
-import * as Haptics from "expo-haptics";
-import * as StoreReview from "expo-store-review";
-import * as Notifications from "expo-notifications";
+import { Haptics, StoreReview, Notifications } from "./RampKitNative";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -111,7 +109,7 @@ function performRampkitHaptic(event: RampkitHapticEvent | any) {
   if (!event || event.action !== "haptic") {
     // Backwards compatible default
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      Haptics.impactAsync("medium").catch(() => {});
     } catch (_) {}
     return;
   }
@@ -120,42 +118,26 @@ function performRampkitHaptic(event: RampkitHapticEvent | any) {
 
   try {
     if (hapticType === "impact") {
-      const styleMap = {
-        Light: Haptics.ImpactFeedbackStyle.Light,
-        Medium: Haptics.ImpactFeedbackStyle.Medium,
-        Heavy: Haptics.ImpactFeedbackStyle.Heavy,
-        Rigid: Haptics.ImpactFeedbackStyle.Rigid,
-        Soft: Haptics.ImpactFeedbackStyle.Soft,
+      const styleMap: Record<string, "light" | "medium" | "heavy" | "rigid" | "soft"> = {
+        Light: "light",
+        Medium: "medium",
+        Heavy: "heavy",
+        Rigid: "rigid",
+        Soft: "soft",
       };
-      const impactStyle =
-        event.impactStyle &&
-        (styleMap as any)[event.impactStyle as keyof typeof styleMap]
-          ? (event.impactStyle as keyof typeof styleMap)
-          : "Medium";
-      const style =
-        (impactStyle && (styleMap as any)[impactStyle]) ||
-        Haptics.ImpactFeedbackStyle.Medium;
-      Haptics.impactAsync(style).catch(() => {});
+      const impactStyle = styleMap[event.impactStyle] || "medium";
+      Haptics.impactAsync(impactStyle).catch(() => {});
       return;
     }
 
     if (hapticType === "notification") {
-      const notificationMap = {
-        Success: Haptics.NotificationFeedbackType.Success,
-        Warning: Haptics.NotificationFeedbackType.Warning,
-        Error: Haptics.NotificationFeedbackType.Error,
+      const notificationMap: Record<string, "success" | "warning" | "error"> = {
+        Success: "success",
+        Warning: "warning",
+        Error: "error",
       };
-      const notificationType =
-        event.notificationType &&
-        (notificationMap as any)[
-          event.notificationType as keyof typeof notificationMap
-        ]
-          ? (event.notificationType as keyof typeof notificationMap)
-          : "Success";
-      const style =
-        (notificationType && (notificationMap as any)[notificationType]) ||
-        Haptics.NotificationFeedbackType.Success;
-      Haptics.notificationAsync(style).catch(() => {});
+      const notificationType = notificationMap[event.notificationType] || "success";
+      Haptics.notificationAsync(notificationType).catch(() => {});
       return;
     }
 
@@ -165,10 +147,10 @@ function performRampkitHaptic(event: RampkitHapticEvent | any) {
     }
 
     // Fallback for unknown hapticType
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    Haptics.impactAsync("medium").catch(() => {});
   } catch (_) {
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      Haptics.impactAsync("medium").catch(() => {});
     } catch (__ ) {}
   }
 }
@@ -186,6 +168,11 @@ export function showRampkitOverlay(opts: {
   onClose?: () => void;
   onOnboardingFinished?: (payload?: any) => void;
   onShowPaywall?: (payload?: any) => void;
+  // Event tracking callbacks
+  onScreenChange?: (screenIndex: number, screenId: string) => void;
+  onOnboardingAbandoned?: (reason: string, lastScreenIndex: number, lastScreenId: string) => void;
+  onNotificationPermissionRequested?: () => void;
+  onNotificationPermissionResult?: (granted: boolean) => void;
 }) {
   console.log("showRampkitOverlay");
   if (sibling) return; // already visible
@@ -208,6 +195,10 @@ export function showRampkitOverlay(opts: {
         onRegisterClose={(handler) => {
           activeCloseHandler = handler;
         }}
+        onScreenChange={opts.onScreenChange}
+        onOnboardingAbandoned={opts.onOnboardingAbandoned}
+        onNotificationPermissionRequested={opts.onNotificationPermissionRequested}
+        onNotificationPermissionResult={opts.onNotificationPermissionResult}
       />
     )
   );
@@ -353,6 +344,11 @@ function Overlay(props: {
   onOnboardingFinished?: (payload?: any) => void;
   onShowPaywall?: (payload?: any) => void;
   onRegisterClose?: (handler: (() => void) | null) => void;
+  // Event tracking callbacks
+  onScreenChange?: (screenIndex: number, screenId: string) => void;
+  onOnboardingAbandoned?: (reason: string, lastScreenIndex: number, lastScreenId: string) => void;
+  onNotificationPermissionRequested?: () => void;
+  onNotificationPermissionResult?: (granted: boolean) => void;
 }) {
   const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
@@ -361,9 +357,11 @@ function Overlay(props: {
   const [visible, setVisible] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const fadeOpacity = useRef(new Animated.Value(0)).current;
   const allLoaded = loadedCount >= props.screens.length;
+  const hasTrackedInitialScreen = useRef(false);
   // shared vars across all webviews
   const varsRef = useRef({} as Record<string, any>);
   // hold refs for injection
@@ -383,9 +381,16 @@ function Overlay(props: {
     }
   }, [visible, isClosing, overlayOpacity]);
 
-  const handleRequestClose = React.useCallback(() => {
+  const handleRequestClose = React.useCallback((options?: { completed?: boolean }) => {
     if (isClosing) return;
     setIsClosing(true);
+    
+    // Track abandonment if not completed
+    const isCompleted = options?.completed || onboardingCompleted;
+    if (!isCompleted && props.onOnboardingAbandoned && props.screens[index]) {
+      props.onOnboardingAbandoned("dismissed", index, props.screens[index].id);
+    }
+    
     Animated.sequence([
       Animated.delay(150),
       Animated.timing(overlayOpacity, {
@@ -397,7 +402,7 @@ function Overlay(props: {
     ]).start(() => {
       props.onRequestClose();
     });
-  }, [isClosing, overlayOpacity, props.onRequestClose]);
+  }, [isClosing, overlayOpacity, props.onRequestClose, onboardingCompleted, index, props.screens, props.onOnboardingAbandoned]);
 
   React.useEffect(() => {
     props.onRegisterClose?.(handleRequestClose);
@@ -543,19 +548,23 @@ function Overlay(props: {
     // ensure current page is synced with latest vars when selected
     if (__DEV__) console.log("[Rampkit] onPageSelected", pos);
     sendVarsToWebView(pos);
+    
+    // Track screen change event
+    if (props.onScreenChange && props.screens[pos]) {
+      props.onScreenChange(pos, props.screens[pos].id);
+    }
   };
 
   const handleAdvance = (i: number, animation: string = "fade") => {
     const last = props.screens.length - 1;
     if (i < last) {
       navigateToIndex(i + 1, animation);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      Haptics.impactAsync("light").catch(() => {});
     } else {
-      // finish
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
-        () => {}
-      );
-      handleRequestClose();
+      // finish - mark as completed before closing
+      setOnboardingCompleted(true);
+      Haptics.notificationAsync("success").catch(() => {});
+      handleRequestClose({ completed: true });
     }
   };
 
@@ -575,60 +584,31 @@ function Overlay(props: {
       shouldPlaySound?: boolean;
     };
   }) {
+    // Track that notification permission was requested
+    try {
+      props.onNotificationPermissionRequested?.();
+    } catch (_) {}
+    
     const iosDefaults = { allowAlert: true, allowBadge: true, allowSound: true };
     const androidDefaults = {
       channelId: "default",
       name: "Default Channel",
-      importance: "MAX",
+      importance: "MAX" as const,
     };
-    const behaviorDefaults = { shouldShowBanner: true, shouldPlaySound: false };
 
     const iosReq = { ...(payload?.ios || iosDefaults) };
     const androidCfg = { ...(payload?.android || androidDefaults) };
-    const behavior = { ...(payload?.behavior || behaviorDefaults) };
-
-    try {
-      // Set foreground behavior
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: !!behavior.shouldShowBanner,
-          shouldPlaySound: !!behavior.shouldPlaySound,
-          shouldSetBadge: false,
-        }),
-      });
-    } catch (_) {}
-
-    try {
-      // Minimal Android 13+ permission + channel config
-      if (Platform.OS === "android") {
-        const importanceMap: Record<string, number> = {
-          MAX: Notifications.AndroidImportance.MAX,
-          HIGH: Notifications.AndroidImportance.HIGH,
-          DEFAULT: Notifications.AndroidImportance.DEFAULT,
-          LOW: Notifications.AndroidImportance.LOW,
-          MIN: Notifications.AndroidImportance.MIN,
-        };
-        const mappedImportance =
-          importanceMap[String(androidCfg.importance || "MAX").toUpperCase()] ||
-          Notifications.AndroidImportance.MAX;
-        if (androidCfg.channelId && androidCfg.name) {
-          try {
-            await Notifications.setNotificationChannelAsync(androidCfg.channelId, {
-              name: androidCfg.name,
-              importance: mappedImportance,
-            });
-          } catch (_) {}
-        }
-      }
-    } catch (_) {}
 
     let result: any = null;
     try {
-      if (Platform.OS === "ios") {
-        result = await Notifications.requestPermissionsAsync({ ios: iosReq as any });
-      } else {
-        result = await Notifications.requestPermissionsAsync();
-      }
+      result = await Notifications.requestPermissionsAsync({
+        ios: iosReq,
+        android: {
+          channelId: androidCfg.channelId,
+          name: androidCfg.name,
+          importance: (androidCfg.importance || "MAX") as any,
+        },
+      });
     } catch (e) {
       result = {
         granted: false,
@@ -641,6 +621,11 @@ function Overlay(props: {
     try {
       console.log("[Rampkit] Notification permission status:", result);
     } catch (_) {}
+    
+    // Track notification permission result
+    try {
+      props.onNotificationPermissionResult?.(!!result?.granted);
+    } catch (_) {}
 
     // Save to shared vars and broadcast to all pages
     try {
@@ -650,9 +635,7 @@ function Overlay(props: {
           granted: !!result?.granted,
           status: result?.status || "undetermined",
           canAskAgain: !!result?.canAskAgain,
-          expires: result?.expires || "never",
           ios: result?.ios,
-          android: result?.android,
         },
       };
       broadcastVars();
@@ -707,7 +690,14 @@ function Overlay(props: {
               hideKeyboardAccessoryView={true}
               onLoadEnd={() => {
                 setLoadedCount((c: number) => c + 1);
-                if (i === 0) setFirstPageLoaded(true);
+                if (i === 0) {
+                  setFirstPageLoaded(true);
+                  // Track initial screen view
+                  if (!hasTrackedInitialScreen.current && props.onScreenChange && props.screens[0]) {
+                    hasTrackedInitialScreen.current = true;
+                    props.onScreenChange(0, props.screens[0].id);
+                  }
+                }
                 // Initialize this page with current vars
                 if (__DEV__)
                   console.log("[Rampkit] onLoadEnd init send vars", i);
@@ -785,17 +775,8 @@ function Overlay(props: {
                     (async () => {
                       try {
                         const available = await StoreReview.isAvailableAsync();
-                        if (available && (await StoreReview.hasAction())) {
+                        if (available) {
                           await StoreReview.requestReview();
-                          return;
-                        }
-                        const url = StoreReview.storeUrl();
-                        if (url) {
-                          const writeUrl =
-                            Platform.OS === "ios"
-                              ? `${url}${url.includes("?") ? "&" : "?"}action=write-review`
-                              : url;
-                          await Linking.openURL(writeUrl);
                         }
                       } catch (_) {}
                     })();
@@ -812,10 +793,11 @@ function Overlay(props: {
                   }
                   // 5) Onboarding finished event from page
                   if (data?.type === "rampkit:onboarding-finished") {
+                    setOnboardingCompleted(true);
                     try {
                       props.onOnboardingFinished?.(data?.payload);
                     } catch (_) {}
-                    handleRequestClose();
+                    handleRequestClose({ completed: true });
                     return;
                   }
                   // 6) Request to show paywall
@@ -886,17 +868,8 @@ function Overlay(props: {
                     (async () => {
                       try {
                         const available = await StoreReview.isAvailableAsync();
-                        if (available && (await StoreReview.hasAction())) {
+                        if (available) {
                           await StoreReview.requestReview();
-                          return;
-                        }
-                        const url = StoreReview.storeUrl();
-                        if (url) {
-                          const writeUrl =
-                            Platform.OS === "ios"
-                              ? `${url}${url.includes("?") ? "&" : "?"}action=write-review`
-                              : url;
-                          await Linking.openURL(writeUrl);
                         }
                       } catch (_) {}
                     })();
@@ -907,10 +880,11 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:onboarding-finished") {
+                    setOnboardingCompleted(true);
                     try {
                       props.onOnboardingFinished?.(undefined);
                     } catch (_) {}
-                    handleRequestClose();
+                    handleRequestClose({ completed: true });
                     return;
                   }
                   if (raw === "rampkit:show-paywall") {

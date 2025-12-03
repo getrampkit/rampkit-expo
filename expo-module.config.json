@@ -1,0 +1,10 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["RampKitModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.rampkit.RampKitModule"]
+  }
+}
+
