@@ -522,10 +522,38 @@ function Overlay(props: {
     return `(function(){try{document.dispatchEvent(new MessageEvent('message',{data:${json}}));}catch(e){}})();`;
   }
 
+  // Build a script that directly sets variables and triggers updates
+  // This is more reliable than dispatching events which may not be caught
+  function buildDirectVarsScript(vars: Record<string, any>): string {
+    const json = JSON.stringify(vars)
+      .replace(/\\/g, "\\\\")
+      .replace(/`/g, "\\`");
+    return `(function(){
+      try {
+        var newVars = ${json};
+        // Directly update the global variables object
+        window.__rampkitVariables = newVars;
+        // Call the handler if available
+        if (typeof window.__rkHandleVarsUpdate === 'function') {
+          window.__rkHandleVarsUpdate(newVars);
+        }
+        // Dispatch custom event for any listeners
+        try {
+          document.dispatchEvent(new CustomEvent('rampkit:vars-updated', {detail: newVars}));
+        } catch(e) {}
+        // Call global callback if defined
+        if (typeof window.onRampkitVarsUpdate === 'function') {
+          window.onRampkitVarsUpdate(newVars);
+        }
+      } catch(e) {
+        console.log('[Rampkit] buildDirectVarsScript error:', e);
+      }
+    })();`;
+  }
+
   function sendVarsToWebView(i: number, isInitialLoad: boolean = false) {
     const wv = webviewsRef.current[i];
     if (!wv) return;
-    const payload = { type: "rampkit:variables", vars: varsRef.current };
     if (__DEV__) console.log("[Rampkit] sendVarsToWebView", i, varsRef.current, { isInitialLoad });
     // Only update the stale filter timestamp during initial page load,
     // not when syncing vars on page selection. This prevents the filter
@@ -534,8 +562,10 @@ function Overlay(props: {
     if (isInitialLoad) {
       lastInitSendRef.current[i] = Date.now();
     }
+    // Use direct variable setting instead of MessageEvent dispatch
+    // This is more reliable as it doesn't depend on event listeners being set up
     // @ts-ignore: injectJavaScript exists on WebView instance
-    wv.injectJavaScript(buildDispatchScript(payload));
+    wv.injectJavaScript(buildDirectVarsScript(varsRef.current));
   }
 
   function broadcastVars() {
@@ -544,16 +574,12 @@ function Overlay(props: {
         recipients: webviewsRef.current.length,
         vars: varsRef.current,
       });
+    const script = buildDirectVarsScript(varsRef.current);
     for (let i = 0; i < webviewsRef.current.length; i++) {
       const wv = webviewsRef.current[i];
       if (wv) {
         // @ts-ignore: injectJavaScript exists on WebView instance
-        wv.injectJavaScript(
-          buildDispatchScript({
-            type: "rampkit:variables",
-            vars: varsRef.current,
-          })
-        );
+        wv.injectJavaScript(script);
       }
     }
   }
@@ -799,40 +825,25 @@ function Overlay(props: {
                         i,
                         data.vars
                       );
-                    const now = Date.now();
-                    const lastInit = lastInitSendRef.current[i] || 0;
-                    const filtered: Record<string, any> = {};
+                    // Accept all variable updates from pages without filtering.
+                    // The previous filter was too aggressive and blocked legitimate
+                    // user interactions that happened within 600ms of page load.
+                    // We now trust that pages send correct variable updates.
                     let changed = false;
+                    const newVars: Record<string, any> = {};
                     for (const [key, value] of Object.entries<any>(data.vars)) {
                       const hasHostVal = Object.prototype.hasOwnProperty.call(
                         varsRef.current,
                         key
                       );
                       const hostVal = (varsRef.current as any)[key];
-                      if (
-                        now - lastInit < 600 &&
-                        hasHostVal &&
-                        hostVal !== undefined &&
-                        value !== hostVal
-                      ) {
-                        if (__DEV__)
-                          console.log(
-                            "[Rampkit] ignore stale var from page",
-                            i,
-                            key,
-                            value,
-                            "kept",
-                            hostVal
-                          );
-                        continue;
-                      }
                       if (!hasHostVal || hostVal !== value) {
-                        (filtered as any)[key] = value;
+                        newVars[key] = value;
                         changed = true;
                       }
                     }
                     if (changed) {
-                      varsRef.current = { ...varsRef.current, ...filtered };
+                      varsRef.current = { ...varsRef.current, ...newVars };
                       broadcastVars();
                     }
                     return;
