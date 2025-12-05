@@ -1,7 +1,6 @@
 package expo.modules.rampkit
 
 import android.Manifest
-import android.app.Activity
 import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -16,25 +15,38 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
 import android.util.DisplayMetrics
+import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.android.billingclient.api.*
 import com.google.android.play.core.review.ReviewManagerFactory
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import kotlinx.coroutines.*
+import org.json.JSONObject
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
 
-class RampKitModule : Module() {
+class RampKitModule : Module(), PurchasesUpdatedListener {
+  private val TAG = "RampKit"
   private val PREFS_NAME = "rampkit_prefs"
   private val USER_ID_KEY = "rk_user_id"
   private val INSTALL_DATE_KEY = "rk_install_date"
   private val LAUNCH_COUNT_KEY = "rk_launch_count"
   private val LAST_LAUNCH_KEY = "rk_last_launch"
+
+  private var billingClient: BillingClient? = null
+  private var appId: String? = null
+  private var userId: String? = null
+  private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
   private val context: Context
     get() = requireNotNull(appContext.reactContext)
@@ -94,7 +106,7 @@ class RampKitModule : Module() {
     }
 
     AsyncFunction("isReviewAvailable") {
-      true // Google Play In-App Review is generally available
+      true
     }
 
     AsyncFunction("getStoreUrl") {
@@ -111,6 +123,300 @@ class RampKitModule : Module() {
 
     AsyncFunction("getNotificationPermissions") {
       getNotificationPermissions()
+    }
+
+    // ============================================================================
+    // Transaction Observer (Google Play Billing)
+    // ============================================================================
+
+    AsyncFunction("startTransactionObserver") { appId: String ->
+      startTransactionObserver(appId)
+    }
+
+    AsyncFunction("stopTransactionObserver") {
+      stopTransactionObserver()
+    }
+
+    OnDestroy {
+      stopTransactionObserver()
+      coroutineScope.cancel()
+    }
+  }
+
+  // ============================================================================
+  // PurchasesUpdatedListener Implementation
+  // ============================================================================
+
+  override fun onPurchasesUpdated(billingResult: BillingResult, purchases: MutableList<Purchase>?) {
+    if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+      for (purchase in purchases) {
+        handlePurchase(purchase)
+      }
+    } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
+      Log.d(TAG, "User cancelled the purchase")
+    } else {
+      Log.e(TAG, "Purchase failed: ${billingResult.debugMessage}")
+    }
+  }
+
+  // ============================================================================
+  // Transaction Observer
+  // ============================================================================
+
+  private fun startTransactionObserver(appId: String) {
+    this.appId = appId
+    this.userId = getOrCreateUserId()
+
+    billingClient = BillingClient.newBuilder(context)
+      .setListener(this)
+      .enablePendingPurchases()
+      .build()
+
+    billingClient?.startConnection(object : BillingClientStateListener {
+      override fun onBillingSetupFinished(billingResult: BillingResult) {
+        if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+          Log.d(TAG, "Billing client connected")
+          // Query existing purchases
+          queryExistingPurchases()
+        } else {
+          Log.e(TAG, "Billing setup failed: ${billingResult.debugMessage}")
+        }
+      }
+
+      override fun onBillingServiceDisconnected() {
+        Log.d(TAG, "Billing service disconnected")
+        // Try to reconnect
+        coroutineScope.launch {
+          delay(5000)
+          startTransactionObserver(appId)
+        }
+      }
+    })
+
+    Log.d(TAG, "Transaction observer started")
+  }
+
+  private fun stopTransactionObserver() {
+    billingClient?.endConnection()
+    billingClient = null
+    Log.d(TAG, "Transaction observer stopped")
+  }
+
+  private fun queryExistingPurchases() {
+    val client = billingClient ?: return
+
+    // Query in-app purchases
+    client.queryPurchasesAsync(
+      QueryPurchasesParams.newBuilder()
+        .setProductType(BillingClient.ProductType.INAPP)
+        .build()
+    ) { billingResult, purchases ->
+      if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+        for (purchase in purchases) {
+          if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED && !purchase.isAcknowledged) {
+            handlePurchase(purchase)
+          }
+        }
+      }
+    }
+
+    // Query subscriptions
+    client.queryPurchasesAsync(
+      QueryPurchasesParams.newBuilder()
+        .setProductType(BillingClient.ProductType.SUBS)
+        .build()
+    ) { billingResult, purchases ->
+      if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+        for (purchase in purchases) {
+          if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED && !purchase.isAcknowledged) {
+            handlePurchase(purchase)
+          }
+        }
+      }
+    }
+  }
+
+  private fun handlePurchase(purchase: Purchase) {
+    val appId = this.appId ?: return
+    val userId = this.userId ?: return
+
+    when (purchase.purchaseState) {
+      Purchase.PurchaseState.PURCHASED -> {
+        // Acknowledge the purchase if not already acknowledged
+        if (!purchase.isAcknowledged) {
+          val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
+            .setPurchaseToken(purchase.purchaseToken)
+            .build()
+          
+          billingClient?.acknowledgePurchase(acknowledgePurchaseParams) { result ->
+            if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+              Log.d(TAG, "Purchase acknowledged")
+            }
+          }
+        }
+
+        // Get product details for price info
+        coroutineScope.launch {
+          val productDetails = getProductDetails(purchase.products.firstOrNull() ?: "")
+          
+          val properties = mutableMapOf<String, Any?>(
+            "productId" to purchase.products.firstOrNull(),
+            "transactionId" to purchase.orderId,
+            "originalTransactionId" to purchase.orderId,
+            "purchaseToken" to purchase.purchaseToken,
+            "purchaseDate" to getIso8601Timestamp(purchase.purchaseTime),
+            "quantity" to purchase.quantity,
+            "isAutoRenewing" to purchase.isAutoRenewing
+          )
+
+          productDetails?.let { details ->
+            val pricingPhase = details.subscriptionOfferDetails?.firstOrNull()?.pricingPhases?.pricingPhaseList?.firstOrNull()
+              ?: details.oneTimePurchaseOfferDetails?.let { oneTime ->
+                object {
+                  val priceAmountMicros = oneTime.priceAmountMicros
+                  val priceCurrencyCode = oneTime.priceCurrencyCode
+                  val formattedPrice = oneTime.formattedPrice
+                }
+              }
+
+            if (pricingPhase != null) {
+              properties["price"] = when (pricingPhase) {
+                is ProductDetails.PricingPhase -> pricingPhase.priceAmountMicros / 1_000_000.0
+                else -> (pricingPhase as? Any)?.let { 
+                  (it.javaClass.getMethod("getPriceAmountMicros").invoke(it) as Long) / 1_000_000.0 
+                }
+              }
+              properties["currency"] = when (pricingPhase) {
+                is ProductDetails.PricingPhase -> pricingPhase.priceCurrencyCode
+                else -> (pricingPhase as? Any)?.let {
+                  it.javaClass.getMethod("getPriceCurrencyCode").invoke(it) as String
+                }
+              }
+              properties["localizedPrice"] = when (pricingPhase) {
+                is ProductDetails.PricingPhase -> pricingPhase.formattedPrice
+                else -> (pricingPhase as? Any)?.let {
+                  it.javaClass.getMethod("getFormattedPrice").invoke(it) as String
+                }
+              }
+            }
+            properties["localizedName"] = details.name
+            properties["productType"] = details.productType
+          }
+
+          sendPurchaseEvent(appId, userId, "purchase_completed", properties)
+        }
+      }
+      Purchase.PurchaseState.PENDING -> {
+        Log.d(TAG, "Purchase pending: ${purchase.products}")
+      }
+    }
+  }
+
+  private suspend fun getProductDetails(productId: String): ProductDetails? {
+    if (productId.isEmpty()) return null
+    val client = billingClient ?: return null
+
+    // Try as subscription first
+    var result = queryProductDetails(client, productId, BillingClient.ProductType.SUBS)
+    if (result == null) {
+      // Try as in-app purchase
+      result = queryProductDetails(client, productId, BillingClient.ProductType.INAPP)
+    }
+    return result
+  }
+
+  private suspend fun queryProductDetails(
+    client: BillingClient,
+    productId: String,
+    productType: String
+  ): ProductDetails? = suspendCancellableCoroutine { continuation ->
+    val productList = listOf(
+      QueryProductDetailsParams.Product.newBuilder()
+        .setProductId(productId)
+        .setProductType(productType)
+        .build()
+    )
+
+    val params = QueryProductDetailsParams.newBuilder()
+      .setProductList(productList)
+      .build()
+
+    client.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+      if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+        continuation.resume(productDetailsList.firstOrNull()) {}
+      } else {
+        continuation.resume(null) {}
+      }
+    }
+  }
+
+  private fun sendPurchaseEvent(appId: String, userId: String, eventName: String, properties: Map<String, Any?>) {
+    coroutineScope.launch {
+      try {
+        val event = JSONObject().apply {
+          put("appId", appId)
+          put("appUserId", userId)
+          put("eventId", UUID.randomUUID().toString().lowercase())
+          put("eventName", eventName)
+          put("sessionId", UUID.randomUUID().toString().lowercase())
+          put("occurredAt", getIso8601Timestamp())
+          put("device", JSONObject().apply {
+            put("platform", "Android")
+            put("platformVersion", Build.VERSION.RELEASE)
+            put("deviceModel", "${Build.MANUFACTURER} ${Build.MODEL}")
+            put("sdkVersion", "1.0.0")
+            put("appVersion", getAppVersion())
+            put("buildNumber", getBuildNumber())
+          })
+          put("context", JSONObject().apply {
+            put("locale", Locale.getDefault().toLanguageTag())
+            put("regionCode", Locale.getDefault().country)
+          })
+          put("properties", JSONObject(properties.filterValues { it != null }))
+        }
+
+        val url = URL("https://uustlzuvjmochxkxatfx.supabase.co/functions/v1/app-user-events")
+        val connection = url.openConnection() as HttpURLConnection
+        connection.apply {
+          requestMethod = "POST"
+          setRequestProperty("Content-Type", "application/json")
+          setRequestProperty("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk")
+          setRequestProperty("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk")
+          doOutput = true
+        }
+
+        OutputStreamWriter(connection.outputStream).use { writer ->
+          writer.write(event.toString())
+        }
+
+        val responseCode = connection.responseCode
+        Log.d(TAG, "Purchase event sent: $eventName - Status: $responseCode")
+        connection.disconnect()
+      } catch (e: Exception) {
+        Log.e(TAG, "Failed to send purchase event", e)
+      }
+    }
+  }
+
+  private fun getAppVersion(): String? {
+    return try {
+      context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    } catch (e: Exception) {
+      null
+    }
+  }
+
+  private fun getBuildNumber(): String? {
+    return try {
+      val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        packageInfo.longVersionCode.toString()
+      } else {
+        @Suppress("DEPRECATION")
+        packageInfo.versionCode.toString()
+      }
+    } catch (e: Exception) {
+      null
     }
   }
 
@@ -138,7 +444,7 @@ class RampKitModule : Module() {
       "bundleId" to context.packageName,
       "appName" to getAppName(),
       "appVersion" to packageInfo?.versionName,
-      "buildNumber" to getBuildNumber(packageInfo),
+      "buildNumber" to getBuildNumberFromPackage(packageInfo),
       "platform" to "Android",
       "platformVersion" to Build.VERSION.RELEASE,
       "deviceModel" to "${Build.MANUFACTURER} ${Build.MODEL}",
@@ -295,7 +601,6 @@ class RampKitModule : Module() {
 
   // Notifications
   private fun requestNotificationPermissions(options: Map<String, Any>?): Map<String, Any> {
-    // Create notification channel for Android 8+
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val androidOptions = options?.get("android") as? Map<*, *>
       val channelId = androidOptions?.get("channelId") as? String ?: "default"
@@ -314,7 +619,6 @@ class RampKitModule : Module() {
       notificationManager.createNotificationChannel(channel)
     }
 
-    // For Android 13+, check POST_NOTIFICATIONS permission
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       val granted = ContextCompat.checkSelfPermission(
         context,
@@ -322,7 +626,6 @@ class RampKitModule : Module() {
       ) == PackageManager.PERMISSION_GRANTED
 
       if (!granted) {
-        // Request permission - this will be handled by the app
         appContext.currentActivity?.let { activity ->
           ActivityCompat.requestPermissions(
             activity,
@@ -339,7 +642,6 @@ class RampKitModule : Module() {
       )
     }
 
-    // For older Android versions, notifications are allowed by default
     return mapOf(
       "granted" to true,
       "status" to "granted",
@@ -388,7 +690,7 @@ class RampKitModule : Module() {
     }
   }
 
-  private fun getBuildNumber(packageInfo: android.content.pm.PackageInfo?): String? {
+  private fun getBuildNumberFromPackage(packageInfo: android.content.pm.PackageInfo?): String? {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
       packageInfo?.longVersionCode?.toString()
     } else {
@@ -441,5 +743,11 @@ class RampKitModule : Module() {
     val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
     sdf.timeZone = TimeZone.getTimeZone("UTC")
     return sdf.format(Date())
+  }
+
+  private fun getIso8601Timestamp(millis: Long): String {
+    val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+    sdf.timeZone = TimeZone.getTimeZone("UTC")
+    return sdf.format(Date(millis))
   }
 }

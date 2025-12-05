@@ -27,7 +27,7 @@ export { default as RampKitNative } from "./RampKitNative";
 export type { NativeDeviceInfo, NativeLaunchData } from "./RampKitNative";
 
 // Export native APIs (replacing expo-haptics, expo-store-review, expo-notifications)
-export { Haptics, StoreReview, Notifications } from "./RampKitNative";
+export { Haptics, StoreReview, Notifications, TransactionObserver } from "./RampKitNative";
 export type { ImpactStyle, NotificationType, NotificationOptions, NotificationPermissionResult } from "./RampKitNative";
 
 // Export types for TypeScript users

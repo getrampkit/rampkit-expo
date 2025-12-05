@@ -16,6 +16,8 @@ interface RampKitNativeModule {
     getStoreUrl(): Promise<string | null>;
     requestNotificationPermissions(options?: NotificationOptions): Promise<NotificationPermissionResult>;
     getNotificationPermissions(): Promise<NotificationPermissionResult>;
+    startTransactionObserver(appId: string): Promise<void>;
+    stopTransactionObserver(): Promise<void>;
 }
 export interface NativeDeviceInfo {
     appUserId: string;
@@ -148,4 +150,16 @@ export declare const Notifications: {
         LOW: number;
         MIN: number;
     };
+};
+export declare const TransactionObserver: {
+    /**
+     * Start listening for purchase transactions
+     * Automatically tracks purchases to the RampKit backend
+     * @param appId - The RampKit app ID
+     */
+    start(appId: string): Promise<void>;
+    /**
+     * Stop listening for purchase transactions
+     */
+    stop(): Promise<void>;
 };

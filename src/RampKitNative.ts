@@ -28,6 +28,10 @@ interface RampKitNativeModule {
   // Notifications
   requestNotificationPermissions(options?: NotificationOptions): Promise<NotificationPermissionResult>;
   getNotificationPermissions(): Promise<NotificationPermissionResult>;
+  
+  // Transaction Observer (StoreKit 2 / Google Play Billing)
+  startTransactionObserver(appId: string): Promise<void>;
+  stopTransactionObserver(): Promise<void>;
 }
 
 // Native device info shape
@@ -157,6 +161,8 @@ function createFallbackModule(): RampKitNativeModule {
     async getNotificationPermissions(): Promise<NotificationPermissionResult> {
       return { granted: false, status: "denied", canAskAgain: false };
     },
+    async startTransactionObserver(_appId: string): Promise<void> {},
+    async stopTransactionObserver(): Promise<void> {},
   };
 }
 
@@ -365,5 +371,37 @@ export const Notifications = {
     DEFAULT: 3,
     LOW: 2,
     MIN: 1,
+  },
+};
+
+// ============================================================================
+// Transaction Observer API (StoreKit 2 / Google Play Billing)
+// ============================================================================
+
+export const TransactionObserver = {
+  /**
+   * Start listening for purchase transactions
+   * Automatically tracks purchases to the RampKit backend
+   * @param appId - The RampKit app ID
+   */
+  async start(appId: string): Promise<void> {
+    try {
+      await RampKitNativeModule.startTransactionObserver(appId);
+      console.log("[RampKit] Transaction observer started");
+    } catch (e) {
+      console.warn("[RampKit] Failed to start transaction observer:", e);
+    }
+  },
+
+  /**
+   * Stop listening for purchase transactions
+   */
+  async stop(): Promise<void> {
+    try {
+      await RampKitNativeModule.stopTransactionObserver();
+      console.log("[RampKit] Transaction observer stopped");
+    } catch (e) {
+      console.warn("[RampKit] Failed to stop transaction observer:", e);
+    }
   },
 };

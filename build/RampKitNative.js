@@ -4,7 +4,7 @@
  * TypeScript interface to the native iOS/Android module
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Notifications = exports.StoreReview = exports.Haptics = void 0;
+exports.TransactionObserver = exports.Notifications = exports.StoreReview = exports.Haptics = void 0;
 exports.getDeviceInfo = getDeviceInfo;
 exports.getUserId = getUserId;
 exports.getStoredValue = getStoredValue;
@@ -60,6 +60,8 @@ function createFallbackModule() {
         async getNotificationPermissions() {
             return { granted: false, status: "denied", canAskAgain: false };
         },
+        async startTransactionObserver(_appId) { },
+        async stopTransactionObserver() { },
     };
 }
 function generateFallbackUserId() {
@@ -251,5 +253,36 @@ exports.Notifications = {
         DEFAULT: 3,
         LOW: 2,
         MIN: 1,
+    },
+};
+// ============================================================================
+// Transaction Observer API (StoreKit 2 / Google Play Billing)
+// ============================================================================
+exports.TransactionObserver = {
+    /**
+     * Start listening for purchase transactions
+     * Automatically tracks purchases to the RampKit backend
+     * @param appId - The RampKit app ID
+     */
+    async start(appId) {
+        try {
+            await RampKitNativeModule.startTransactionObserver(appId);
+            console.log("[RampKit] Transaction observer started");
+        }
+        catch (e) {
+            console.warn("[RampKit] Failed to start transaction observer:", e);
+        }
+    },
+    /**
+     * Stop listening for purchase transactions
+     */
+    async stop() {
+        try {
+            await RampKitNativeModule.stopTransactionObserver();
+            console.log("[RampKit] Transaction observer stopped");
+        }
+        catch (e) {
+            console.warn("[RampKit] Failed to stop transaction observer:", e);
+        }
     },
 };

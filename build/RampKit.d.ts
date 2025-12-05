@@ -68,42 +68,7 @@ export declare class RampKitCore {
      */
     trackCtaTap(buttonId: string, buttonText?: string): void;
     /**
-     * Track paywall shown
-     */
-    trackPaywallShown(paywallId: string, placement?: string, products?: Array<{
-        productId: string;
-        price?: number;
-        currency?: string;
-    }>): void;
-    /**
-     * Track paywall primary action tap
-     */
-    trackPaywallPrimaryActionTap(paywallId: string, productId?: string): void;
-    /**
-     * Track paywall closed
-     */
-    trackPaywallClosed(paywallId: string, reason: "dismissed" | "purchased" | "backgrounded"): void;
-    /**
-     * Track purchase started
-     */
-    trackPurchaseStarted(productId: string, amount?: number, currency?: string): void;
-    /**
-     * Track purchase completed
-     */
-    trackPurchaseCompleted(properties: {
-        productId: string;
-        amount: number;
-        currency: string;
-        transactionId: string;
-        originalTransactionId?: string;
-        purchaseDate?: string;
-    }): void;
-    /**
-     * Track purchase failed
-     */
-    trackPurchaseFailed(productId: string, errorCode: string, errorMessage: string): void;
-    /**
      * Cleanup SDK resources
      */
-    cleanup(): void;
+    cleanup(): Promise<void>;
 }

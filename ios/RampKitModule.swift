@@ -10,6 +10,11 @@ public class RampKitModule: Module {
   private let launchCountKey = "rk_launch_count"
   private let lastLaunchKey = "rk_last_launch"
   
+  // Transaction observer task
+  private var transactionObserverTask: Task<Void, Never>?
+  private var appId: String?
+  private var userId: String?
+  
   public func definition() -> ModuleDefinition {
     Name("RampKit")
     
@@ -62,11 +67,10 @@ public class RampKitModule: Module {
     }
     
     AsyncFunction("isReviewAvailable") { () -> Bool in
-      return true // Always available on iOS
+      return true
     }
     
     AsyncFunction("getStoreUrl") { () -> String? in
-      // Return nil - app should provide its own store URL
       return nil
     }
     
@@ -80,6 +84,18 @@ public class RampKitModule: Module {
     
     AsyncFunction("getNotificationPermissions") { () -> [String: Any] in
       return await self.getNotificationPermissions()
+    }
+    
+    // ============================================================================
+    // Transaction Observer (StoreKit 2)
+    // ============================================================================
+    
+    AsyncFunction("startTransactionObserver") { (appId: String) in
+      self.startTransactionObserver(appId: appId)
+    }
+    
+    AsyncFunction("stopTransactionObserver") { () in
+      self.stopTransactionObserver()
     }
   }
   
@@ -366,6 +382,205 @@ public class RampKitModule: Module {
     case .disabled: return "disabled"
     case .enabled: return "enabled"
     @unknown default: return "disabled"
+    }
+  }
+  
+  // MARK: - StoreKit 2 Transaction Observer
+  
+  private func startTransactionObserver(appId: String) {
+    self.appId = appId
+    self.userId = getOrCreateUserId()
+    
+    // Cancel existing observer if any
+    transactionObserverTask?.cancel()
+    
+    // Start listening for transactions (iOS 15+)
+    if #available(iOS 15.0, *) {
+      transactionObserverTask = Task {
+        await self.listenForTransactions()
+      }
+      
+      // Also check for any unfinished transactions
+      Task {
+        await self.handleUnfinishedTransactions()
+      }
+    }
+    
+    print("[RampKit] Transaction observer started")
+  }
+  
+  private func stopTransactionObserver() {
+    transactionObserverTask?.cancel()
+    transactionObserverTask = nil
+    print("[RampKit] Transaction observer stopped")
+  }
+  
+  @available(iOS 15.0, *)
+  private func listenForTransactions() async {
+    // Listen for transaction updates
+    for await result in Transaction.updates {
+      do {
+        let transaction = try self.checkVerified(result)
+        await self.handleTransaction(transaction)
+        await transaction.finish()
+      } catch {
+        print("[RampKit] Transaction verification failed: \(error)")
+      }
+    }
+  }
+  
+  @available(iOS 15.0, *)
+  private func handleUnfinishedTransactions() async {
+    // Handle any transactions that weren't finished
+    for await result in Transaction.unfinished {
+      do {
+        let transaction = try self.checkVerified(result)
+        await self.handleTransaction(transaction)
+        await transaction.finish()
+      } catch {
+        print("[RampKit] Unfinished transaction verification failed: \(error)")
+      }
+    }
+  }
+  
+  @available(iOS 15.0, *)
+  private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+    switch result {
+    case .unverified(_, let error):
+      throw error
+    case .verified(let safe):
+      return safe
+    }
+  }
+  
+  @available(iOS 15.0, *)
+  private func handleTransaction(_ transaction: Transaction) async {
+    guard let appId = self.appId, let userId = self.userId else { return }
+    
+    // Determine event type based on transaction
+    let eventName: String
+    var properties: [String: Any] = [:]
+    
+    switch transaction.revocationReason {
+    case .some(let reason):
+      eventName = "purchase_refunded"
+      properties["revocationReason"] = reason == .developerIssue ? "developer_issue" : "other"
+    case .none:
+      if transaction.isUpgraded {
+        eventName = "subscription_upgraded"
+      } else {
+        switch transaction.productType {
+        case .autoRenewable:
+          if transaction.originalID == transaction.id {
+            eventName = "purchase_completed"
+          } else {
+            eventName = "subscription_renewed"
+          }
+        case .consumable, .nonConsumable:
+          eventName = "purchase_completed"
+        case .nonRenewable:
+          eventName = "purchase_completed"
+        default:
+          eventName = "purchase_completed"
+        }
+      }
+    }
+    
+    // Build properties
+    properties["productId"] = transaction.productID
+    properties["transactionId"] = String(transaction.id)
+    properties["originalTransactionId"] = String(transaction.originalID)
+    properties["purchaseDate"] = ISO8601DateFormatter().string(from: transaction.purchaseDate)
+    
+    if let expirationDate = transaction.expirationDate {
+      properties["expirationDate"] = ISO8601DateFormatter().string(from: expirationDate)
+    }
+    
+    properties["quantity"] = transaction.purchasedQuantity
+    properties["productType"] = mapProductType(transaction.productType)
+    properties["environment"] = transaction.environment.rawValue
+    
+    if let webOrderLineItemID = transaction.webOrderLineItemID {
+      properties["webOrderLineItemId"] = webOrderLineItemID
+    }
+    
+    // Get price info from product if available
+    if let product = await getProduct(for: transaction.productID) {
+      properties["price"] = product.price
+      properties["currency"] = product.priceFormatStyle.currencyCode
+      properties["localizedPrice"] = product.displayPrice
+      properties["localizedName"] = product.displayName
+    }
+    
+    // Send event to backend
+    await sendPurchaseEvent(
+      appId: appId,
+      userId: userId,
+      eventName: eventName,
+      properties: properties
+    )
+  }
+  
+  @available(iOS 15.0, *)
+  private func getProduct(for productId: String) async -> Product? {
+    do {
+      let products = try await Product.products(for: [productId])
+      return products.first
+    } catch {
+      return nil
+    }
+  }
+  
+  @available(iOS 15.0, *)
+  private func mapProductType(_ type: Product.ProductType) -> String {
+    switch type {
+    case .consumable: return "consumable"
+    case .nonConsumable: return "non_consumable"
+    case .autoRenewable: return "auto_renewable"
+    case .nonRenewable: return "non_renewable"
+    @unknown default: return "unknown"
+    }
+  }
+  
+  private func sendPurchaseEvent(appId: String, userId: String, eventName: String, properties: [String: Any]) async {
+    let event: [String: Any] = [
+      "appId": appId,
+      "appUserId": userId,
+      "eventId": UUID().uuidString.lowercased(),
+      "eventName": eventName,
+      "sessionId": UUID().uuidString.lowercased(),
+      "occurredAt": ISO8601DateFormatter().string(from: Date()),
+      "device": [
+        "platform": isPad() ? "iPadOS" : "iOS",
+        "platformVersion": UIDevice.current.systemVersion,
+        "deviceModel": getDeviceModelIdentifier(),
+        "sdkVersion": "1.0.0",
+        "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+        "buildNumber": Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+      ],
+      "context": [
+        "locale": Locale.current.identifier,
+        "regionCode": Locale.current.regionCode
+      ],
+      "properties": properties
+    ]
+    
+    guard let url = URL(string: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1/app-user-events") else { return }
+    
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk", forHTTPHeaderField: "apikey")
+    request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk", forHTTPHeaderField: "Authorization")
+    
+    do {
+      request.httpBody = try JSONSerialization.data(withJSONObject: event)
+      let (_, response) = try await URLSession.shared.data(for: request)
+      if let httpResponse = response as? HTTPURLResponse {
+        print("[RampKit] Purchase event sent: \(eventName) - Status: \(httpResponse.statusCode)")
+      }
+    } catch {
+      print("[RampKit] Failed to send purchase event: \(error)")
     }
   }
   

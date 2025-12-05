@@ -10,6 +10,7 @@ const RampkitOverlay_1 = require("./RampkitOverlay");
 const userId_1 = require("./userId");
 const DeviceInfoCollector_1 = require("./DeviceInfoCollector");
 const EventManager_1 = require("./EventManager");
+const RampKitNative_1 = require("./RampKitNative");
 const constants_1 = require("./constants");
 class RampKitCore {
     constructor() {
@@ -51,6 +52,9 @@ class RampKitCore {
             EventManager_1.eventManager.trackAppSessionStarted(this.deviceInfo.isFirstLaunch, this.deviceInfo.launchCount);
             // Step 5: Setup app state listener for background/foreground tracking
             this.setupAppStateListener();
+            // Step 6: Start transaction observer for automatic purchase tracking
+            console.log("[RampKit] Init: Starting transaction observer...");
+            await RampKitNative_1.TransactionObserver.start(config.appId);
             this.initialized = true;
         }
         catch (e) {
@@ -276,46 +280,15 @@ class RampKitCore {
     trackCtaTap(buttonId, buttonText) {
         EventManager_1.eventManager.trackCtaTap(buttonId, buttonText);
     }
-    /**
-     * Track paywall shown
-     */
-    trackPaywallShown(paywallId, placement, products) {
-        EventManager_1.eventManager.trackPaywallShown(paywallId, placement, products);
-    }
-    /**
-     * Track paywall primary action tap
-     */
-    trackPaywallPrimaryActionTap(paywallId, productId) {
-        EventManager_1.eventManager.trackPaywallPrimaryActionTap(paywallId, productId);
-    }
-    /**
-     * Track paywall closed
-     */
-    trackPaywallClosed(paywallId, reason) {
-        EventManager_1.eventManager.trackPaywallClosed(paywallId, reason);
-    }
-    /**
-     * Track purchase started
-     */
-    trackPurchaseStarted(productId, amount, currency) {
-        EventManager_1.eventManager.trackPurchaseStarted(productId, amount, currency);
-    }
-    /**
-     * Track purchase completed
-     */
-    trackPurchaseCompleted(properties) {
-        EventManager_1.eventManager.trackPurchaseCompleted(properties);
-    }
-    /**
-     * Track purchase failed
-     */
-    trackPurchaseFailed(productId, errorCode, errorMessage) {
-        EventManager_1.eventManager.trackPurchaseFailed(productId, errorCode, errorMessage);
-    }
+    // Note: Purchase and paywall events are automatically tracked by the native
+    // StoreKit 2 (iOS) and Google Play Billing (Android) transaction observers.
+    // No manual tracking is needed.
     /**
      * Cleanup SDK resources
      */
-    cleanup() {
+    async cleanup() {
+        // Stop transaction observer
+        await RampKitNative_1.TransactionObserver.stop();
         if (this.appStateSubscription) {
             this.appStateSubscription.remove();
             this.appStateSubscription = null;

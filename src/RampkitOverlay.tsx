@@ -464,12 +464,18 @@ function Overlay(props: {
     return `(function(){try{document.dispatchEvent(new MessageEvent('message',{data:${json}}));}catch(e){}})();`;
   }
 
-  function sendVarsToWebView(i: number) {
+  function sendVarsToWebView(i: number, isInitialLoad: boolean = false) {
     const wv = webviewsRef.current[i];
     if (!wv) return;
     const payload = { type: "rampkit:variables", vars: varsRef.current };
-    if (__DEV__) console.log("[Rampkit] sendVarsToWebView", i, varsRef.current);
-    lastInitSendRef.current[i] = Date.now();
+    if (__DEV__) console.log("[Rampkit] sendVarsToWebView", i, varsRef.current, { isInitialLoad });
+    // Only update the stale filter timestamp during initial page load,
+    // not when syncing vars on page selection. This prevents the filter
+    // from incorrectly rejecting legitimate user interactions that happen
+    // immediately after navigating to a screen.
+    if (isInitialLoad) {
+      lastInitSendRef.current[i] = Date.now();
+    }
     // @ts-ignore: injectJavaScript exists on WebView instance
     wv.injectJavaScript(buildDispatchScript(payload));
   }
@@ -698,10 +704,10 @@ function Overlay(props: {
                     props.onScreenChange(0, props.screens[0].id);
                   }
                 }
-                // Initialize this page with current vars
+                // Initialize this page with current vars (isInitialLoad=true to enable stale filter)
                 if (__DEV__)
                   console.log("[Rampkit] onLoadEnd init send vars", i);
-                sendVarsToWebView(i);
+                sendVarsToWebView(i, true);
               }}
               onMessage={(ev: any) => {
                 const raw = ev.nativeEvent.data;
