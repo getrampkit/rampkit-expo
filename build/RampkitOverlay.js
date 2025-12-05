@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.injectedNoSelect = exports.injectedHardening = void 0;
+exports.injectedVarsHandler = exports.injectedNoSelect = exports.injectedHardening = void 0;
 exports.showRampkitOverlay = showRampkitOverlay;
 exports.hideRampkitOverlay = hideRampkitOverlay;
 exports.closeRampkitOverlay = closeRampkitOverlay;
@@ -121,6 +121,54 @@ exports.injectedNoSelect = `
     var prevent = function(e){ if(e && e.preventDefault) e.preventDefault(); return false; };
     document.addEventListener('contextmenu', prevent, { passive: false, capture: true });
     document.addEventListener('selectstart', prevent, { passive: false, capture: true });
+  } catch (_) {}
+  true;
+})();
+`;
+// Robust variable handler that ensures variables are always received and applied
+// This runs after content loads and sets up listeners for incoming variable updates
+exports.injectedVarsHandler = `
+(function(){
+  try {
+    if (window.__rkVarsHandlerApplied) return true;
+    window.__rkVarsHandlerApplied = true;
+    
+    // Handler function that updates variables and notifies the page
+    window.__rkHandleVarsUpdate = function(vars) {
+      if (!vars || typeof vars !== 'object') return;
+      // Update the global variables object
+      window.__rampkitVariables = vars;
+      // Dispatch a custom event that the page's JS can listen to for re-rendering
+      try {
+        document.dispatchEvent(new CustomEvent('rampkit:vars-updated', { detail: vars }));
+      } catch(e) {}
+      // Also try calling a global handler if the page defined one
+      try {
+        if (typeof window.onRampkitVarsUpdate === 'function') {
+          window.onRampkitVarsUpdate(vars);
+        }
+      } catch(e) {}
+    };
+    
+    // Listen for message events from React Native
+    document.addEventListener('message', function(event) {
+      try {
+        var data = event.data;
+        if (data && data.type === 'rampkit:variables' && data.vars) {
+          window.__rkHandleVarsUpdate(data.vars);
+        }
+      } catch(e) {}
+    }, false);
+    
+    // Also listen on window for compatibility
+    window.addEventListener('message', function(event) {
+      try {
+        var data = event.data;
+        if (data && data.type === 'rampkit:variables' && data.vars) {
+          window.__rkHandleVarsUpdate(data.vars);
+        }
+      } catch(e) {}
+    }, false);
   } catch (_) {}
   true;
 })();
@@ -225,7 +273,7 @@ function preloadRampkitOverlay(opts) {
                 opacity: 0,
                 top: -1000,
                 left: -1000,
-            }, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { originWhitelist: ["*"], source: { html: docs[0] || "<html></html>" }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, hideKeyboardAccessoryView: true }) }));
+            }, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { originWhitelist: ["*"], source: { html: docs[0] || "<html></html>" }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, hideKeyboardAccessoryView: true }) }));
         preloadSibling = new react_native_root_siblings_1.default((0, jsx_runtime_1.jsx)(HiddenPreloader, {}));
     }
     catch (e) {
@@ -485,12 +533,20 @@ function Overlay(props) {
         // ensure current page is synced with latest vars when selected
         if (__DEV__)
             console.log("[Rampkit] onPageSelected", pos);
-        // Use requestAnimationFrame to ensure the webview is fully active and ready
-        // to receive injected JS. Without this delay, the first navigation back
-        // to a screen may not properly receive the updated variables.
+        // Send vars multiple times with increasing delays to ensure the webview
+        // receives them. The first send might fail if the webview isn't fully ready,
+        // so we retry a few times.
         requestAnimationFrame(() => {
             sendVarsToWebView(pos);
         });
+        // Retry after a short delay in case the first send didn't work
+        setTimeout(() => {
+            sendVarsToWebView(pos);
+        }, 50);
+        // Final retry to catch any edge cases
+        setTimeout(() => {
+            sendVarsToWebView(pos);
+        }, 150);
         // Track screen change event
         if (props.onScreenChange && props.screens[pos]) {
             props.onScreenChange(pos, props.screens[pos].id);
@@ -571,7 +627,7 @@ function Overlay(props) {
             styles.root,
             !visible && styles.invisible,
             visible && { opacity: overlayOpacity },
-        ], pointerEvents: visible && !isClosing ? "auto" : "none", children: [(0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
+        ], pointerEvents: visible && !isClosing ? "auto" : "none", children: [(0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
                             setLoadedCount((c) => c + 1);
                             if (i === 0) {
                                 setFirstPageLoaded(true);

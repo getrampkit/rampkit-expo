@@ -86,6 +86,55 @@ export const injectedNoSelect = `
 })();
 `;
 
+// Robust variable handler that ensures variables are always received and applied
+// This runs after content loads and sets up listeners for incoming variable updates
+export const injectedVarsHandler = `
+(function(){
+  try {
+    if (window.__rkVarsHandlerApplied) return true;
+    window.__rkVarsHandlerApplied = true;
+    
+    // Handler function that updates variables and notifies the page
+    window.__rkHandleVarsUpdate = function(vars) {
+      if (!vars || typeof vars !== 'object') return;
+      // Update the global variables object
+      window.__rampkitVariables = vars;
+      // Dispatch a custom event that the page's JS can listen to for re-rendering
+      try {
+        document.dispatchEvent(new CustomEvent('rampkit:vars-updated', { detail: vars }));
+      } catch(e) {}
+      // Also try calling a global handler if the page defined one
+      try {
+        if (typeof window.onRampkitVarsUpdate === 'function') {
+          window.onRampkitVarsUpdate(vars);
+        }
+      } catch(e) {}
+    };
+    
+    // Listen for message events from React Native
+    document.addEventListener('message', function(event) {
+      try {
+        var data = event.data;
+        if (data && data.type === 'rampkit:variables' && data.vars) {
+          window.__rkHandleVarsUpdate(data.vars);
+        }
+      } catch(e) {}
+    }, false);
+    
+    // Also listen on window for compatibility
+    window.addEventListener('message', function(event) {
+      try {
+        var data = event.data;
+        if (data && data.type === 'rampkit:variables' && data.vars) {
+          window.__rkHandleVarsUpdate(data.vars);
+        }
+      } catch(e) {}
+    }, false);
+  } catch (_) {}
+  true;
+})();
+`;
+
 export type ScreenPayload = {
   id: string;
   html: string;
@@ -255,7 +304,7 @@ export function preloadRampkitOverlay(opts: {
           originWhitelist={["*"]}
           source={{ html: docs[0] || "<html></html>" }}
           injectedJavaScriptBeforeContentLoaded={injectedHardening}
-          injectedJavaScript={injectedNoSelect}
+          injectedJavaScript={injectedNoSelect + injectedVarsHandler}
           automaticallyAdjustContentInsets={false}
           contentInsetAdjustmentBehavior="never"
           bounces={false}
@@ -562,12 +611,20 @@ function Overlay(props: {
     setIndex(pos);
     // ensure current page is synced with latest vars when selected
     if (__DEV__) console.log("[Rampkit] onPageSelected", pos);
-    // Use requestAnimationFrame to ensure the webview is fully active and ready
-    // to receive injected JS. Without this delay, the first navigation back
-    // to a screen may not properly receive the updated variables.
+    // Send vars multiple times with increasing delays to ensure the webview
+    // receives them. The first send might fail if the webview isn't fully ready,
+    // so we retry a few times.
     requestAnimationFrame(() => {
       sendVarsToWebView(pos);
     });
+    // Retry after a short delay in case the first send didn't work
+    setTimeout(() => {
+      sendVarsToWebView(pos);
+    }, 50);
+    // Final retry to catch any edge cases
+    setTimeout(() => {
+      sendVarsToWebView(pos);
+    }, 150);
     
     // Track screen change event
     if (props.onScreenChange && props.screens[pos]) {
@@ -692,7 +749,7 @@ function Overlay(props: {
               originWhitelist={["*"]}
               source={{ html: doc }}
               injectedJavaScriptBeforeContentLoaded={injectedHardening}
-              injectedJavaScript={injectedNoSelect}
+              injectedJavaScript={injectedNoSelect + injectedVarsHandler}
               automaticallyAdjustContentInsets={false}
               contentInsetAdjustmentBehavior="never"
               bounces={false}
