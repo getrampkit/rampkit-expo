@@ -366,6 +366,11 @@ function Overlay(props) {
             else if (typeof pager.setPageWithoutAnimation === "function") {
                 pager.setPageWithoutAnimation(nextIndex);
             }
+            // Explicitly send vars to the new page after setting it
+            // This ensures the webview receives the latest state
+            requestAnimationFrame(() => {
+                sendVarsToWebView(nextIndex);
+            });
             return;
         }
         setIsTransitioning(true);
@@ -380,6 +385,10 @@ function Overlay(props) {
             // @ts-ignore: method exists on PagerView instance
             (_c = (_b = (_a = pagerRef.current) === null || _a === void 0 ? void 0 : _a.setPageWithoutAnimation) === null || _b === void 0 ? void 0 : _b.call(_a, nextIndex)) !== null && _c !== void 0 ? _c : (_d = pagerRef.current) === null || _d === void 0 ? void 0 : _d.setPage(nextIndex);
             requestAnimationFrame(() => {
+                // Explicitly send vars to the new page after the page switch completes
+                // This ensures the webview receives the latest state even if onPageSelected
+                // timing was off during the transition
+                sendVarsToWebView(nextIndex);
                 react_native_1.Animated.timing(fadeOpacity, {
                     toValue: 0,
                     duration: 160,
@@ -476,7 +485,12 @@ function Overlay(props) {
         // ensure current page is synced with latest vars when selected
         if (__DEV__)
             console.log("[Rampkit] onPageSelected", pos);
-        sendVarsToWebView(pos);
+        // Use requestAnimationFrame to ensure the webview is fully active and ready
+        // to receive injected JS. Without this delay, the first navigation back
+        // to a screen may not properly receive the updated variables.
+        requestAnimationFrame(() => {
+            sendVarsToWebView(pos);
+        });
         // Track screen change event
         if (props.onScreenChange && props.screens[pos]) {
             props.onScreenChange(pos, props.screens[pos].id);

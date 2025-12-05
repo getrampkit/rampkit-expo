@@ -432,6 +432,11 @@ function Overlay(props: {
       } else if (typeof pager.setPageWithoutAnimation === "function") {
         pager.setPageWithoutAnimation(nextIndex);
       }
+      // Explicitly send vars to the new page after setting it
+      // This ensures the webview receives the latest state
+      requestAnimationFrame(() => {
+        sendVarsToWebView(nextIndex);
+      });
       return;
     }
 
@@ -447,6 +452,10 @@ function Overlay(props: {
       pagerRef.current?.setPageWithoutAnimation?.(nextIndex) ??
         pagerRef.current?.setPage(nextIndex);
       requestAnimationFrame(() => {
+        // Explicitly send vars to the new page after the page switch completes
+        // This ensures the webview receives the latest state even if onPageSelected
+        // timing was off during the transition
+        sendVarsToWebView(nextIndex);
         Animated.timing(fadeOpacity, {
           toValue: 0,
           duration: 160,
@@ -553,7 +562,12 @@ function Overlay(props: {
     setIndex(pos);
     // ensure current page is synced with latest vars when selected
     if (__DEV__) console.log("[Rampkit] onPageSelected", pos);
-    sendVarsToWebView(pos);
+    // Use requestAnimationFrame to ensure the webview is fully active and ready
+    // to receive injected JS. Without this delay, the first navigation back
+    // to a screen may not properly receive the updated variables.
+    requestAnimationFrame(() => {
+      sendVarsToWebView(pos);
+    });
     
     // Track screen change event
     if (props.onScreenChange && props.screens[pos]) {
