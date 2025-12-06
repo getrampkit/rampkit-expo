@@ -137,131 +137,83 @@ export const injectedVarsHandler = `
 `;
 
 // Template resolution script that replaces ${device.xxx} and ${user.xxx} with actual values
-// This runs on DOMContentLoaded and can be re-triggered via window.rampkitResolveTemplates()
-export const injectedTemplateResolver = `
-(function(){
-  try {
-    if (window.__rkTemplateResolverApplied) return true;
-    window.__rkTemplateResolverApplied = true;
-    
-    // Template pattern: matches ${'$'}{varName}
-    var TEMPLATE_MARKER = '$' + '{';
-    var TEMPLATE_REGEX = /\\x24\\x7B([A-Za-z_][A-Za-z0-9_.]*)\\x7D/g;
-    
-    // Build variable map from context
-    function buildVarMap() {
-      var vars = {};
-      var ctx = window.rampkitContext || { device: {}, user: {} };
-      var state = window.__rampkitVariables || {};
-      
-      // Device vars (device.xxx)
-      if (ctx.device) {
-        Object.keys(ctx.device).forEach(function(key) {
-          vars['device.' + key] = ctx.device[key];
-        });
-      }
-      
-      // User vars (user.xxx)
-      if (ctx.user) {
-        Object.keys(ctx.user).forEach(function(key) {
-          vars['user.' + key] = ctx.user[key];
-        });
-      }
-      
-      // State vars (varName - no prefix)
-      Object.keys(state).forEach(function(key) {
-        vars[key] = state[key];
-      });
-      
-      return vars;
-    }
-    
-    // Format a value for display
-    function formatValue(value) {
-      if (value === undefined || value === null) return '';
-      if (typeof value === 'boolean') return value ? 'true' : 'false';
-      if (typeof value === 'object') return JSON.stringify(value);
-      return String(value);
-    }
-    
-    // Resolve templates in a single text node
-    function resolveTextNode(node, vars) {
-      var text = node.textContent;
-      if (!text || text.indexOf(TEMPLATE_MARKER) === -1) return;
-      
-      var resolved = text.replace(TEMPLATE_REGEX, function(match, varName) {
-        if (vars.hasOwnProperty(varName)) {
-          return formatValue(vars[varName]);
-        }
-        return match; // Keep original if var not found
-      });
-      
-      if (resolved !== text) {
-        node.textContent = resolved;
-      }
-    }
-    
-    // Resolve templates in all text nodes
-    function resolveAllTemplates() {
-      var vars = buildVarMap();
-      var walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT,
-        null,
-        false
-      );
-      
-      var node;
-      while (node = walker.nextNode()) {
-        resolveTextNode(node, vars);
-      }
-      
-      // Also resolve in attribute values that might contain templates
-      var allElements = document.body.getElementsByTagName('*');
-      for (var i = 0; i < allElements.length; i++) {
-        var el = allElements[i];
-        for (var j = 0; j < el.attributes.length; j++) {
-          var attr = el.attributes[j];
-          if (attr.value && attr.value.indexOf(TEMPLATE_MARKER) !== -1) {
-            var resolvedAttr = attr.value.replace(TEMPLATE_REGEX, function(match, varName) {
-              if (vars.hasOwnProperty(varName)) {
-                return formatValue(vars[varName]);
-              }
-              return match;
-            });
-            if (resolvedAttr !== attr.value) {
-              el.setAttribute(attr.name, resolvedAttr);
-            }
-          }
-        }
-      }
-    }
-    
-    // Run on DOMContentLoaded
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', resolveAllTemplates);
-    } else {
-      // DOM already ready, run immediately
-      resolveAllTemplates();
-    }
-    
-    // Also run after a short delay to catch dynamically added content
-    setTimeout(resolveAllTemplates, 100);
-    
-    // Expose for manual re-resolution
-    window.rampkitResolveTemplates = resolveAllTemplates;
-    
-    // Re-resolve when variables update
-    document.addEventListener('rampkit:vars-updated', function() {
-      setTimeout(resolveAllTemplates, 0);
-    });
-    
-  } catch(e) {
-    console.log('[Rampkit] Template resolver error:', e);
-  }
-  true;
-})();
-`;
+// Built using string concatenation to avoid template literal escaping issues
+export const injectedTemplateResolver = [
+  "(function(){",
+  "  try {",
+  "    if (window.__rkTemplateResolverApplied) return true;",
+  "    window.__rkTemplateResolverApplied = true;",
+  "    ",
+  "    console.log('[Rampkit] Template resolver starting...');",
+  "    console.log('[Rampkit] rampkitContext:', JSON.stringify(window.rampkitContext));",
+  "    ",
+  "    function buildVarMap() {",
+  "      var vars = {};",
+  "      var ctx = window.rampkitContext || { device: {}, user: {} };",
+  "      var state = window.__rampkitVariables || {};",
+  "      if (ctx.device) {",
+  "        Object.keys(ctx.device).forEach(function(key) {",
+  "          vars['device.' + key] = ctx.device[key];",
+  "        });",
+  "      }",
+  "      if (ctx.user) {",
+  "        Object.keys(ctx.user).forEach(function(key) {",
+  "          vars['user.' + key] = ctx.user[key];",
+  "        });",
+  "      }",
+  "      Object.keys(state).forEach(function(key) {",
+  "        vars[key] = state[key];",
+  "      });",
+  "      console.log('[Rampkit] Variable map:', JSON.stringify(vars));",
+  "      return vars;",
+  "    }",
+  "    ",
+  "    function formatValue(value) {",
+  "      if (value === undefined || value === null) return '';",
+  "      if (typeof value === 'boolean') return value ? 'true' : 'false';",
+  "      if (typeof value === 'object') return JSON.stringify(value);",
+  "      return String(value);",
+  "    }",
+  "    ",
+  "    function resolveAllTemplates() {",
+  "      console.log('[Rampkit] Resolving templates...');",
+  "      var vars = buildVarMap();",
+  "      var pattern = /\\$\\{([A-Za-z_][A-Za-z0-9_.]*)\\}/g;",
+  "      var bodyHtml = document.body.innerHTML;",
+  "      var marker = String.fromCharCode(36, 123);", // $ = 36, { = 123
+  "      var hasTemplates = bodyHtml.indexOf(marker) !== -1;",
+  "      console.log('[Rampkit] Body has templates:', hasTemplates);",
+  "      if (hasTemplates) {",
+  "        var newHtml = bodyHtml.replace(pattern, function(match, varName) {",
+  "          console.log('[Rampkit] Found template:', match, 'varName:', varName);",
+  "          if (vars.hasOwnProperty(varName)) {",
+  "            var value = formatValue(vars[varName]);",
+  "            console.log('[Rampkit] Replacing with:', value);",
+  "            return value;",
+  "          }",
+  "          console.log('[Rampkit] No value found for:', varName);",
+  "          return match;",
+  "        });",
+  "        if (newHtml !== bodyHtml) {",
+  "          document.body.innerHTML = newHtml;",
+  "          console.log('[Rampkit] Templates resolved!');",
+  "        }",
+  "      }",
+  "    }",
+  "    ",
+  "    setTimeout(resolveAllTemplates, 50);",
+  "    setTimeout(resolveAllTemplates, 200);",
+  "    window.rampkitResolveTemplates = resolveAllTemplates;",
+  "    document.addEventListener('rampkit:vars-updated', function() {",
+  "      setTimeout(resolveAllTemplates, 0);",
+  "    });",
+  "    console.log('[Rampkit] Template resolver initialized');",
+  "  } catch(e) {",
+  "    console.log('[Rampkit] Template resolver error:', e);",
+  "  }",
+  "  true;",
+  "})();",
+].join("\n");
 
 export type ScreenPayload = {
   id: string;
