@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.injectedTemplateResolver = exports.injectedVarsHandler = exports.injectedNoSelect = exports.injectedHardening = void 0;
+exports.injectedVarsHandler = exports.injectedNoSelect = exports.injectedHardening = void 0;
 exports.showRampkitOverlay = showRampkitOverlay;
 exports.hideRampkitOverlay = hideRampkitOverlay;
 exports.closeRampkitOverlay = closeRampkitOverlay;
@@ -173,84 +173,6 @@ exports.injectedVarsHandler = `
   true;
 })();
 `;
-// Template resolution script that replaces ${device.xxx} and ${user.xxx} with actual values
-// Built using string concatenation to avoid template literal escaping issues
-exports.injectedTemplateResolver = [
-    "(function(){",
-    "  try {",
-    "    if (window.__rkTemplateResolverApplied) return true;",
-    "    window.__rkTemplateResolverApplied = true;",
-    "    ",
-    "    console.log('[Rampkit] Template resolver starting...');",
-    "    console.log('[Rampkit] rampkitContext:', JSON.stringify(window.rampkitContext));",
-    "    ",
-    "    function buildVarMap() {",
-    "      var vars = {};",
-    "      var ctx = window.rampkitContext || { device: {}, user: {} };",
-    "      var state = window.__rampkitVariables || {};",
-    "      if (ctx.device) {",
-    "        Object.keys(ctx.device).forEach(function(key) {",
-    "          vars['device.' + key] = ctx.device[key];",
-    "        });",
-    "      }",
-    "      if (ctx.user) {",
-    "        Object.keys(ctx.user).forEach(function(key) {",
-    "          vars['user.' + key] = ctx.user[key];",
-    "        });",
-    "      }",
-    "      Object.keys(state).forEach(function(key) {",
-    "        vars[key] = state[key];",
-    "      });",
-    "      console.log('[Rampkit] Variable map:', JSON.stringify(vars));",
-    "      return vars;",
-    "    }",
-    "    ",
-    "    function formatValue(value) {",
-    "      if (value === undefined || value === null) return '';",
-    "      if (typeof value === 'boolean') return value ? 'true' : 'false';",
-    "      if (typeof value === 'object') return JSON.stringify(value);",
-    "      return String(value);",
-    "    }",
-    "    ",
-    "    function resolveAllTemplates() {",
-    "      console.log('[Rampkit] Resolving templates...');",
-    "      var vars = buildVarMap();",
-    "      var pattern = /\\$\\{([A-Za-z_][A-Za-z0-9_.]*)\\}/g;",
-    "      var bodyHtml = document.body.innerHTML;",
-    "      var marker = String.fromCharCode(36, 123);", // $ = 36, { = 123
-    "      var hasTemplates = bodyHtml.indexOf(marker) !== -1;",
-    "      console.log('[Rampkit] Body has templates:', hasTemplates);",
-    "      if (hasTemplates) {",
-    "        var newHtml = bodyHtml.replace(pattern, function(match, varName) {",
-    "          console.log('[Rampkit] Found template:', match, 'varName:', varName);",
-    "          if (vars.hasOwnProperty(varName)) {",
-    "            var value = formatValue(vars[varName]);",
-    "            console.log('[Rampkit] Replacing with:', value);",
-    "            return value;",
-    "          }",
-    "          console.log('[Rampkit] No value found for:', varName);",
-    "          return match;",
-    "        });",
-    "        if (newHtml !== bodyHtml) {",
-    "          document.body.innerHTML = newHtml;",
-    "          console.log('[Rampkit] Templates resolved!');",
-    "        }",
-    "      }",
-    "    }",
-    "    ",
-    "    setTimeout(resolveAllTemplates, 50);",
-    "    setTimeout(resolveAllTemplates, 200);",
-    "    window.rampkitResolveTemplates = resolveAllTemplates;",
-    "    document.addEventListener('rampkit:vars-updated', function() {",
-    "      setTimeout(resolveAllTemplates, 0);",
-    "    });",
-    "    console.log('[Rampkit] Template resolver initialized');",
-    "  } catch(e) {",
-    "    console.log('[Rampkit] Template resolver error:', e);",
-    "  }",
-    "  true;",
-    "})();",
-].join("\n");
 function performRampkitHaptic(event) {
     if (!event || event.action !== "haptic") {
         // Backwards compatible default
@@ -300,13 +222,15 @@ function performRampkitHaptic(event) {
 }
 let sibling = null;
 let preloadSibling = null;
-const preloadCache = new Map();
+// Cache is now disabled - always rebuild docs to ensure templates are resolved with current context
+// const preloadCache = new Map<string, string[]>();
 let activeCloseHandler = null;
 function showRampkitOverlay(opts) {
-    console.log("showRampkitOverlay");
+    console.log("[RampKit] showRampkitOverlay called, context:", opts.rampkitContext ? "present" : "missing");
     if (sibling)
         return; // already visible
-    const prebuiltDocs = preloadCache.get(opts.onboardingId);
+    // Always build fresh docs to ensure templates are resolved with current context
+    const prebuiltDocs = undefined;
     sibling = new react_native_root_siblings_1.default(((0, jsx_runtime_1.jsx)(Overlay, { onboardingId: opts.onboardingId, screens: opts.screens, variables: opts.variables, requiredScripts: opts.requiredScripts, rampkitContext: opts.rampkitContext, prebuiltDocs: prebuiltDocs, onRequestClose: () => {
             var _a;
             activeCloseHandler = null;
@@ -336,14 +260,11 @@ function closeRampkitOverlay() {
     hideRampkitOverlay();
 }
 function preloadRampkitOverlay(opts) {
+    // Preloading is now simplified - just warm up the WebView process
     try {
-        if (preloadCache.has(opts.onboardingId))
-            return;
-        const docs = opts.screens.map((s) => buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext));
-        preloadCache.set(opts.onboardingId, docs);
-        // Mount a hidden WebView to warm up the WebView process and cache
         if (preloadSibling)
             return;
+        const docs = opts.screens.map((s) => buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext));
         const HiddenPreloader = () => ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: {
                 position: "absolute",
                 width: 1,
@@ -351,17 +272,62 @@ function preloadRampkitOverlay(opts) {
                 opacity: 0,
                 top: -1000,
                 left: -1000,
-            }, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { originWhitelist: ["*"], source: { html: docs[0] || "<html></html>" }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedTemplateResolver, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, hideKeyboardAccessoryView: true }) }));
+            }, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { originWhitelist: ["*"], source: { html: docs[0] || "<html></html>" }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, hideKeyboardAccessoryView: true }) }));
         preloadSibling = new react_native_root_siblings_1.default((0, jsx_runtime_1.jsx)(HiddenPreloader, {}));
     }
     catch (e) {
         // best-effort preloading; ignore errors
     }
 }
+/**
+ * Resolve device/user templates in a string
+ * Replaces ${device.xxx} and ${user.xxx} with actual values from context
+ */
+function resolveContextTemplates(text, context) {
+    if (!text || !text.includes("${"))
+        return text;
+    // Build variable map
+    const vars = {};
+    // Device vars
+    if (context.device) {
+        Object.entries(context.device).forEach(([key, value]) => {
+            vars[`device.${key}`] = value;
+        });
+    }
+    // User vars
+    if (context.user) {
+        Object.entries(context.user).forEach(([key, value]) => {
+            vars[`user.${key}`] = value;
+        });
+    }
+    console.log("[RampKit] Resolving templates with vars:", JSON.stringify(vars));
+    // Replace ${varName} patterns
+    return text.replace(/\$\{([A-Za-z_][A-Za-z0-9_.]*)\}/g, (match, varName) => {
+        if (vars.hasOwnProperty(varName)) {
+            const value = vars[varName];
+            console.log(`[RampKit] Replacing ${match} with:`, value);
+            if (value === undefined || value === null)
+                return "";
+            if (typeof value === "boolean")
+                return value ? "true" : "false";
+            if (typeof value === "object")
+                return JSON.stringify(value);
+            return String(value);
+        }
+        // Not a device/user var - leave for state variable handling
+        return match;
+    });
+}
 function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext) {
+    console.log("[RampKit] buildHtmlDocument called");
+    console.log("[RampKit] rampkitContext received:", rampkitContext ? JSON.stringify(rampkitContext).slice(0, 200) : "undefined");
     const css = screen.css || "";
-    const html = screen.html || "";
+    let html = screen.html || "";
     const js = screen.js || "";
+    // Log if HTML contains device/user templates
+    if (html.includes("${device.") || html.includes("${user.")) {
+        console.log("[RampKit] HTML contains device/user templates");
+    }
     const scripts = (requiredScripts || [])
         .map((src) => `<script src="${src}"></script>`)
         .join("\n");
@@ -418,6 +384,15 @@ function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext) {
             installedAt: new Date().toISOString(),
         },
     };
+    // Resolve device/user templates in HTML BEFORE sending to WebView
+    const originalHtml = html;
+    html = resolveContextTemplates(html, context);
+    if (originalHtml !== html) {
+        console.log("[RampKit] Templates were resolved in HTML");
+    }
+    else if (originalHtml.includes("${device.") || originalHtml.includes("${user.")) {
+        console.log("[RampKit] WARNING: HTML still contains unresolved device/user templates!");
+    }
     return `<!doctype html>
 <html>
 <head>
@@ -760,7 +735,7 @@ function Overlay(props) {
             styles.root,
             !visible && styles.invisible,
             visible && { opacity: overlayOpacity },
-        ], pointerEvents: visible && !isClosing ? "auto" : "none", children: [(0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedTemplateResolver, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
+        ], pointerEvents: visible && !isClosing ? "auto" : "none", children: [(0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
                             setLoadedCount((c) => c + 1);
                             if (i === 0) {
                                 setFirstPageLoaded(true);

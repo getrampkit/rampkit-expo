@@ -136,84 +136,6 @@ export const injectedVarsHandler = `
 })();
 `;
 
-// Template resolution script that replaces ${device.xxx} and ${user.xxx} with actual values
-// Built using string concatenation to avoid template literal escaping issues
-export const injectedTemplateResolver = [
-  "(function(){",
-  "  try {",
-  "    if (window.__rkTemplateResolverApplied) return true;",
-  "    window.__rkTemplateResolverApplied = true;",
-  "    ",
-  "    console.log('[Rampkit] Template resolver starting...');",
-  "    console.log('[Rampkit] rampkitContext:', JSON.stringify(window.rampkitContext));",
-  "    ",
-  "    function buildVarMap() {",
-  "      var vars = {};",
-  "      var ctx = window.rampkitContext || { device: {}, user: {} };",
-  "      var state = window.__rampkitVariables || {};",
-  "      if (ctx.device) {",
-  "        Object.keys(ctx.device).forEach(function(key) {",
-  "          vars['device.' + key] = ctx.device[key];",
-  "        });",
-  "      }",
-  "      if (ctx.user) {",
-  "        Object.keys(ctx.user).forEach(function(key) {",
-  "          vars['user.' + key] = ctx.user[key];",
-  "        });",
-  "      }",
-  "      Object.keys(state).forEach(function(key) {",
-  "        vars[key] = state[key];",
-  "      });",
-  "      console.log('[Rampkit] Variable map:', JSON.stringify(vars));",
-  "      return vars;",
-  "    }",
-  "    ",
-  "    function formatValue(value) {",
-  "      if (value === undefined || value === null) return '';",
-  "      if (typeof value === 'boolean') return value ? 'true' : 'false';",
-  "      if (typeof value === 'object') return JSON.stringify(value);",
-  "      return String(value);",
-  "    }",
-  "    ",
-  "    function resolveAllTemplates() {",
-  "      console.log('[Rampkit] Resolving templates...');",
-  "      var vars = buildVarMap();",
-  "      var pattern = /\\$\\{([A-Za-z_][A-Za-z0-9_.]*)\\}/g;",
-  "      var bodyHtml = document.body.innerHTML;",
-  "      var marker = String.fromCharCode(36, 123);", // $ = 36, { = 123
-  "      var hasTemplates = bodyHtml.indexOf(marker) !== -1;",
-  "      console.log('[Rampkit] Body has templates:', hasTemplates);",
-  "      if (hasTemplates) {",
-  "        var newHtml = bodyHtml.replace(pattern, function(match, varName) {",
-  "          console.log('[Rampkit] Found template:', match, 'varName:', varName);",
-  "          if (vars.hasOwnProperty(varName)) {",
-  "            var value = formatValue(vars[varName]);",
-  "            console.log('[Rampkit] Replacing with:', value);",
-  "            return value;",
-  "          }",
-  "          console.log('[Rampkit] No value found for:', varName);",
-  "          return match;",
-  "        });",
-  "        if (newHtml !== bodyHtml) {",
-  "          document.body.innerHTML = newHtml;",
-  "          console.log('[Rampkit] Templates resolved!');",
-  "        }",
-  "      }",
-  "    }",
-  "    ",
-  "    setTimeout(resolveAllTemplates, 50);",
-  "    setTimeout(resolveAllTemplates, 200);",
-  "    window.rampkitResolveTemplates = resolveAllTemplates;",
-  "    document.addEventListener('rampkit:vars-updated', function() {",
-  "      setTimeout(resolveAllTemplates, 0);",
-  "    });",
-  "    console.log('[Rampkit] Template resolver initialized');",
-  "  } catch(e) {",
-  "    console.log('[Rampkit] Template resolver error:', e);",
-  "  }",
-  "  true;",
-  "})();",
-].join("\n");
 
 export type ScreenPayload = {
   id: string;
@@ -286,7 +208,8 @@ function performRampkitHaptic(event: RampkitHapticEvent | any) {
 
 let sibling: any | null = null;
 let preloadSibling: any | null = null;
-const preloadCache = new Map<string, string[]>();
+// Cache is now disabled - always rebuild docs to ensure templates are resolved with current context
+// const preloadCache = new Map<string, string[]>();
 let activeCloseHandler: (() => void) | null = null;
 
 export function showRampkitOverlay(opts: {
@@ -304,9 +227,10 @@ export function showRampkitOverlay(opts: {
   onNotificationPermissionRequested?: () => void;
   onNotificationPermissionResult?: (granted: boolean) => void;
 }) {
-  console.log("showRampkitOverlay");
+  console.log("[RampKit] showRampkitOverlay called, context:", opts.rampkitContext ? "present" : "missing");
   if (sibling) return; // already visible
-  const prebuiltDocs = preloadCache.get(opts.onboardingId);
+  // Always build fresh docs to ensure templates are resolved with current context
+  const prebuiltDocs: string[] | undefined = undefined;
   sibling = new RootSiblings(
     (
       <Overlay
@@ -363,14 +287,12 @@ export function preloadRampkitOverlay(opts: {
   requiredScripts?: string[];
   rampkitContext?: RampKitContext;
 }) {
+  // Preloading is now simplified - just warm up the WebView process
   try {
-    if (preloadCache.has(opts.onboardingId)) return;
+    if (preloadSibling) return;
     const docs = opts.screens.map((s) =>
       buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext)
     );
-    preloadCache.set(opts.onboardingId, docs);
-    // Mount a hidden WebView to warm up the WebView process and cache
-    if (preloadSibling) return;
     const HiddenPreloader = () => (
       <View
         pointerEvents="none"
@@ -387,7 +309,7 @@ export function preloadRampkitOverlay(opts: {
           originWhitelist={["*"]}
           source={{ html: docs[0] || "<html></html>" }}
           injectedJavaScriptBeforeContentLoaded={injectedHardening}
-          injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedTemplateResolver}
+          injectedJavaScript={injectedNoSelect + injectedVarsHandler}
           automaticallyAdjustContentInsets={false}
           contentInsetAdjustmentBehavior="never"
           bounces={false}
@@ -405,15 +327,67 @@ export function preloadRampkitOverlay(opts: {
   }
 }
 
+/**
+ * Resolve device/user templates in a string
+ * Replaces ${device.xxx} and ${user.xxx} with actual values from context
+ */
+function resolveContextTemplates(
+  text: string,
+  context: RampKitContext
+): string {
+  if (!text || !text.includes("${")) return text;
+
+  // Build variable map
+  const vars: Record<string, any> = {};
+
+  // Device vars
+  if (context.device) {
+    Object.entries(context.device).forEach(([key, value]) => {
+      vars[`device.${key}`] = value;
+    });
+  }
+
+  // User vars
+  if (context.user) {
+    Object.entries(context.user).forEach(([key, value]) => {
+      vars[`user.${key}`] = value;
+    });
+  }
+
+  console.log("[RampKit] Resolving templates with vars:", JSON.stringify(vars));
+
+  // Replace ${varName} patterns
+  return text.replace(/\$\{([A-Za-z_][A-Za-z0-9_.]*)\}/g, (match, varName) => {
+    if (vars.hasOwnProperty(varName)) {
+      const value = vars[varName];
+      console.log(`[RampKit] Replacing ${match} with:`, value);
+      if (value === undefined || value === null) return "";
+      if (typeof value === "boolean") return value ? "true" : "false";
+      if (typeof value === "object") return JSON.stringify(value);
+      return String(value);
+    }
+    // Not a device/user var - leave for state variable handling
+    return match;
+  });
+}
+
 function buildHtmlDocument(
   screen: ScreenPayload,
   variables?: Record<string, any>,
   requiredScripts?: string[],
   rampkitContext?: RampKitContext
 ) {
+  console.log("[RampKit] buildHtmlDocument called");
+  console.log("[RampKit] rampkitContext received:", rampkitContext ? JSON.stringify(rampkitContext).slice(0, 200) : "undefined");
+  
   const css = screen.css || "";
-  const html = screen.html || "";
+  let html = screen.html || "";
   const js = screen.js || "";
+  
+  // Log if HTML contains device/user templates
+  if (html.includes("${device.") || html.includes("${user.")) {
+    console.log("[RampKit] HTML contains device/user templates");
+  }
   const scripts = (requiredScripts || [])
     .map((src) => `<script src="${src}"></script>`)
     .join("\n");
@@ -473,6 +447,16 @@ function buildHtmlDocument(
       installedAt: new Date().toISOString(),
     },
   };
+
+  // Resolve device/user templates in HTML BEFORE sending to WebView
+  const originalHtml = html;
+  html = resolveContextTemplates(html, context);
+  
+  if (originalHtml !== html) {
+    console.log("[RampKit] Templates were resolved in HTML");
+  } else if (originalHtml.includes("${device.") || originalHtml.includes("${user.")) {
+    console.log("[RampKit] WARNING: HTML still contains unresolved device/user templates!");
+  }
   
   return `<!doctype html>
 <html>
@@ -890,7 +874,7 @@ function Overlay(props: {
               originWhitelist={["*"]}
               source={{ html: doc }}
               injectedJavaScriptBeforeContentLoaded={injectedHardening}
-              injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedTemplateResolver}
+              injectedJavaScript={injectedNoSelect + injectedVarsHandler}
               automaticallyAdjustContentInsets={false}
               contentInsetAdjustmentBehavior="never"
               bounces={false}
