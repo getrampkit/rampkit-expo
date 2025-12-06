@@ -144,6 +144,10 @@ export const injectedTemplateResolver = `
     if (window.__rkTemplateResolverApplied) return true;
     window.__rkTemplateResolverApplied = true;
     
+    // Template pattern: matches ${'$'}{varName}
+    var TEMPLATE_MARKER = '$' + '{';
+    var TEMPLATE_REGEX = /\\x24\\x7B([A-Za-z_][A-Za-z0-9_.]*)\\x7D/g;
+    
     // Build variable map from context
     function buildVarMap() {
       var vars = {};
@@ -183,9 +187,9 @@ export const injectedTemplateResolver = `
     // Resolve templates in a single text node
     function resolveTextNode(node, vars) {
       var text = node.textContent;
-      if (!text || text.indexOf('\${') === -1) return;
+      if (!text || text.indexOf(TEMPLATE_MARKER) === -1) return;
       
-      var resolved = text.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_\\.]*)\\}/g, function(match, varName) {
+      var resolved = text.replace(TEMPLATE_REGEX, function(match, varName) {
         if (vars.hasOwnProperty(varName)) {
           return formatValue(vars[varName]);
         }
@@ -218,8 +222,8 @@ export const injectedTemplateResolver = `
         var el = allElements[i];
         for (var j = 0; j < el.attributes.length; j++) {
           var attr = el.attributes[j];
-          if (attr.value && attr.value.indexOf('\${') !== -1) {
-            var resolvedAttr = attr.value.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_\\.]*)\\}/g, function(match, varName) {
+          if (attr.value && attr.value.indexOf(TEMPLATE_MARKER) !== -1) {
+            var resolvedAttr = attr.value.replace(TEMPLATE_REGEX, function(match, varName) {
               if (vars.hasOwnProperty(varName)) {
                 return formatValue(vars[varName]);
               }
