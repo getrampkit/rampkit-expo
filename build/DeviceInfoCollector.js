@@ -11,6 +11,7 @@ exports.getSessionStartTime = getSessionStartTime;
 exports.getSessionDurationSeconds = getSessionDurationSeconds;
 exports.collectDeviceInfo = collectDeviceInfo;
 exports.resetSession = resetSession;
+exports.buildRampKitContext = buildRampKitContext;
 const react_native_1 = require("react-native");
 const RampKitNative_1 = __importDefault(require("./RampKitNative"));
 const constants_1 = require("./constants");
@@ -197,4 +198,50 @@ function generateFallbackUuid() {
 function resetSession() {
     sessionId = null;
     sessionStartTime = null;
+}
+/**
+ * Build RampKit context from DeviceInfo for WebView template resolution
+ * This creates the device/user context that gets injected as window.rampkitContext
+ */
+function buildRampKitContext(deviceInfo) {
+    // Calculate days since install
+    const daysSinceInstall = calculateDaysSinceInstall(deviceInfo.installDate);
+    const device = {
+        platform: deviceInfo.platform,
+        model: deviceInfo.deviceModel,
+        locale: deviceInfo.deviceLocale,
+        language: deviceInfo.deviceLanguageCode || deviceInfo.deviceLocale.split("_")[0] || "en",
+        country: deviceInfo.regionCode || deviceInfo.deviceLocale.split("_")[1] || "US",
+        currencyCode: deviceInfo.deviceCurrencyCode || "USD",
+        currencySymbol: deviceInfo.deviceCurrencySymbol || "$",
+        appVersion: deviceInfo.appVersion || "1.0.0",
+        buildNumber: deviceInfo.buildNumber || "1",
+        bundleId: deviceInfo.bundleId || "",
+        interfaceStyle: deviceInfo.interfaceStyle,
+        timezone: deviceInfo.timezoneOffsetSeconds,
+        daysSinceInstall,
+    };
+    const user = {
+        id: deviceInfo.appUserId,
+        isNewUser: deviceInfo.isFirstLaunch,
+        hasAppleSearchAdsAttribution: deviceInfo.isAppleSearchAdsAttribution,
+        sessionId: deviceInfo.appSessionId,
+        installedAt: deviceInfo.installDate,
+    };
+    return { device, user };
+}
+/**
+ * Calculate days since install from install date string
+ */
+function calculateDaysSinceInstall(installDateString) {
+    try {
+        const installDate = new Date(installDateString);
+        const now = new Date();
+        const diffMs = now.getTime() - installDate.getTime();
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        return Math.max(0, diffDays);
+    }
+    catch (_a) {
+        return 0;
+    }
 }

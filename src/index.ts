@@ -20,6 +20,7 @@ export {
   collectDeviceInfo,
   getSessionDurationSeconds,
   getSessionStartTime,
+  buildRampKitContext,
 } from "./DeviceInfoCollector";
 
 // Export native module for direct access
@@ -38,6 +39,10 @@ export type {
   EventContext,
   RampKitConfig,
   RampKitEventName,
+  // Context types for WebView template resolution
+  RampKitContext,
+  RampKitDeviceContext,
+  RampKitUserContext,
   // Event property types
   AppSessionStartedProperties,
   AppSessionEndedProperties,

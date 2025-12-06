@@ -288,3 +288,63 @@ export interface RampKitConfig {
   showPaywall?: (payload?: any) => void;
 }
 
+// ============================================================================
+// RampKit Context (for WebView template resolution)
+// ============================================================================
+
+/**
+ * Device context variables available in templates as ${device.xxx}
+ */
+export interface RampKitDeviceContext {
+  /** Platform: "iOS", "Android", or "iPadOS" */
+  platform: string;
+  /** Device model: "iPhone 15 Pro", "Pixel 7", etc. */
+  model: string;
+  /** Full locale identifier: "en_US", "fr_FR", etc. */
+  locale: string;
+  /** Language code: "en", "fr", etc. */
+  language: string;
+  /** Country/region code: "US", "FR", etc. */
+  country: string;
+  /** Currency code: "USD", "EUR", etc. */
+  currencyCode: string;
+  /** Currency symbol: "$", "€", etc. */
+  currencySymbol: string;
+  /** App version string: "1.0.0" */
+  appVersion: string;
+  /** Build number: "123" */
+  buildNumber: string;
+  /** Bundle identifier: "com.example.app" */
+  bundleId: string;
+  /** Interface style: "light" or "dark" */
+  interfaceStyle: string;
+  /** Timezone offset in seconds from GMT */
+  timezone: number;
+  /** Days since app was first installed */
+  daysSinceInstall: number;
+}
+
+/**
+ * User context variables available in templates as ${user.xxx}
+ */
+export interface RampKitUserContext {
+  /** Unique user identifier */
+  id: string;
+  /** Whether this is the user's first session */
+  isNewUser: boolean;
+  /** Whether user came from Apple Search Ads */
+  hasAppleSearchAdsAttribution: boolean;
+  /** Current session identifier */
+  sessionId: string;
+  /** ISO date string when app was first installed */
+  installedAt: string;
+}
+
+/**
+ * Full context object injected into WebView as window.rampkitContext
+ */
+export interface RampKitContext {
+  device: RampKitDeviceContext;
+  user: RampKitUserContext;
+}
+

@@ -205,6 +205,10 @@ class RampKitCore {
             const requiredScripts = Array.isArray(data.requiredScripts)
                 ? data.requiredScripts
                 : [];
+            // Build device/user context for template resolution
+            const rampkitContext = this.deviceInfo
+                ? (0, DeviceInfoCollector_1.buildRampKitContext)(this.deviceInfo)
+                : undefined;
             // Track onboarding started event
             const onboardingId = data.onboardingId || data.id || "unknown";
             EventManager_1.eventManager.trackOnboardingStarted(onboardingId, screens.length);
@@ -215,6 +219,7 @@ class RampKitCore {
                     screens,
                     variables,
                     requiredScripts,
+                    rampkitContext,
                 });
             }
             catch (_) { }
@@ -223,6 +228,7 @@ class RampKitCore {
                 screens,
                 variables,
                 requiredScripts,
+                rampkitContext,
                 onOnboardingFinished: (payload) => {
                     var _a;
                     // Track onboarding completed

@@ -7,7 +7,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CAPABILITIES = exports.SDK_VERSION = exports.TransactionObserver = exports.Notifications = exports.StoreReview = exports.Haptics = exports.RampKitNative = exports.getSessionStartTime = exports.getSessionDurationSeconds = exports.collectDeviceInfo = exports.eventManager = exports.getRampKitUserId = exports.RampKit = void 0;
+exports.CAPABILITIES = exports.SDK_VERSION = exports.TransactionObserver = exports.Notifications = exports.StoreReview = exports.Haptics = exports.RampKitNative = exports.buildRampKitContext = exports.getSessionStartTime = exports.getSessionDurationSeconds = exports.collectDeviceInfo = exports.eventManager = exports.getRampKitUserId = exports.RampKit = void 0;
 const RampKit_1 = require("./RampKit");
 // Main SDK singleton instance
 exports.RampKit = RampKit_1.RampKitCore.instance;
@@ -22,6 +22,7 @@ var DeviceInfoCollector_1 = require("./DeviceInfoCollector");
 Object.defineProperty(exports, "collectDeviceInfo", { enumerable: true, get: function () { return DeviceInfoCollector_1.collectDeviceInfo; } });
 Object.defineProperty(exports, "getSessionDurationSeconds", { enumerable: true, get: function () { return DeviceInfoCollector_1.getSessionDurationSeconds; } });
 Object.defineProperty(exports, "getSessionStartTime", { enumerable: true, get: function () { return DeviceInfoCollector_1.getSessionStartTime; } });
+Object.defineProperty(exports, "buildRampKitContext", { enumerable: true, get: function () { return DeviceInfoCollector_1.buildRampKitContext; } });
 // Export native module for direct access
 var RampKitNative_1 = require("./RampKitNative");
 Object.defineProperty(exports, "RampKitNative", { enumerable: true, get: function () { return __importDefault(RampKitNative_1).default; } });

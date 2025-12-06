@@ -14,10 +14,11 @@ import {
   collectDeviceInfo,
   getSessionDurationSeconds,
   resetSession,
+  buildRampKitContext,
 } from "./DeviceInfoCollector";
 import { eventManager } from "./EventManager";
 import { TransactionObserver } from "./RampKitNative";
-import { DeviceInfo, RampKitConfig, EventContext } from "./types";
+import { DeviceInfo, RampKitConfig, EventContext, RampKitContext } from "./types";
 import { ENDPOINTS, SUPABASE_ANON_KEY, MANIFEST_BASE_URL } from "./constants";
 
 export class RampKitCore {
@@ -260,6 +261,11 @@ export class RampKitCore {
         ? data.requiredScripts
         : [];
 
+      // Build device/user context for template resolution
+      const rampkitContext: RampKitContext | undefined = this.deviceInfo
+        ? buildRampKitContext(this.deviceInfo)
+        : undefined;
+
       // Track onboarding started event
       const onboardingId = data.onboardingId || data.id || "unknown";
       eventManager.trackOnboardingStarted(onboardingId, screens.length);
@@ -271,6 +277,7 @@ export class RampKitCore {
           screens,
           variables,
           requiredScripts,
+          rampkitContext,
         });
       } catch (_) {}
 
@@ -279,6 +286,7 @@ export class RampKitCore {
         screens,
         variables,
         requiredScripts,
+        rampkitContext,
         onOnboardingFinished: (payload?: any) => {
           // Track onboarding completed
           eventManager.trackOnboardingCompleted(

@@ -6,6 +6,7 @@ import PagerView, {
 } from "react-native-pager-view";
 import { WebView } from "react-native-webview";
 import { Haptics, StoreReview, Notifications } from "./RampKitNative";
+import { RampKitContext } from "./types";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -135,6 +136,129 @@ export const injectedVarsHandler = `
 })();
 `;
 
+// Template resolution script that replaces ${device.xxx} and ${user.xxx} with actual values
+// This runs on DOMContentLoaded and can be re-triggered via window.rampkitResolveTemplates()
+export const injectedTemplateResolver = `
+(function(){
+  try {
+    if (window.__rkTemplateResolverApplied) return true;
+    window.__rkTemplateResolverApplied = true;
+    
+    // Build variable map from context
+    function buildVarMap() {
+      var vars = {};
+      var ctx = window.rampkitContext || { device: {}, user: {} };
+      var state = window.__rampkitVariables || {};
+      
+      // Device vars (device.xxx)
+      if (ctx.device) {
+        Object.keys(ctx.device).forEach(function(key) {
+          vars['device.' + key] = ctx.device[key];
+        });
+      }
+      
+      // User vars (user.xxx)
+      if (ctx.user) {
+        Object.keys(ctx.user).forEach(function(key) {
+          vars['user.' + key] = ctx.user[key];
+        });
+      }
+      
+      // State vars (varName - no prefix)
+      Object.keys(state).forEach(function(key) {
+        vars[key] = state[key];
+      });
+      
+      return vars;
+    }
+    
+    // Format a value for display
+    function formatValue(value) {
+      if (value === undefined || value === null) return '';
+      if (typeof value === 'boolean') return value ? 'true' : 'false';
+      if (typeof value === 'object') return JSON.stringify(value);
+      return String(value);
+    }
+    
+    // Resolve templates in a single text node
+    function resolveTextNode(node, vars) {
+      var text = node.textContent;
+      if (!text || text.indexOf('\${') === -1) return;
+      
+      var resolved = text.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_\\.]*)\\}/g, function(match, varName) {
+        if (vars.hasOwnProperty(varName)) {
+          return formatValue(vars[varName]);
+        }
+        return match; // Keep original if var not found
+      });
+      
+      if (resolved !== text) {
+        node.textContent = resolved;
+      }
+    }
+    
+    // Resolve templates in all text nodes
+    function resolveAllTemplates() {
+      var vars = buildVarMap();
+      var walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+      
+      var node;
+      while (node = walker.nextNode()) {
+        resolveTextNode(node, vars);
+      }
+      
+      // Also resolve in attribute values that might contain templates
+      var allElements = document.body.getElementsByTagName('*');
+      for (var i = 0; i < allElements.length; i++) {
+        var el = allElements[i];
+        for (var j = 0; j < el.attributes.length; j++) {
+          var attr = el.attributes[j];
+          if (attr.value && attr.value.indexOf('\${') !== -1) {
+            var resolvedAttr = attr.value.replace(/\\$\\{([A-Za-z_][A-Za-z0-9_\\.]*)\\}/g, function(match, varName) {
+              if (vars.hasOwnProperty(varName)) {
+                return formatValue(vars[varName]);
+              }
+              return match;
+            });
+            if (resolvedAttr !== attr.value) {
+              el.setAttribute(attr.name, resolvedAttr);
+            }
+          }
+        }
+      }
+    }
+    
+    // Run on DOMContentLoaded
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', resolveAllTemplates);
+    } else {
+      // DOM already ready, run immediately
+      resolveAllTemplates();
+    }
+    
+    // Also run after a short delay to catch dynamically added content
+    setTimeout(resolveAllTemplates, 100);
+    
+    // Expose for manual re-resolution
+    window.rampkitResolveTemplates = resolveAllTemplates;
+    
+    // Re-resolve when variables update
+    document.addEventListener('rampkit:vars-updated', function() {
+      setTimeout(resolveAllTemplates, 0);
+    });
+    
+  } catch(e) {
+    console.log('[Rampkit] Template resolver error:', e);
+  }
+  true;
+})();
+`;
+
 export type ScreenPayload = {
   id: string;
   html: string;
@@ -214,6 +338,7 @@ export function showRampkitOverlay(opts: {
   screens: ScreenPayload[];
   variables?: Record<string, any>;
   requiredScripts?: string[];
+  rampkitContext?: RampKitContext;
   onClose?: () => void;
   onOnboardingFinished?: (payload?: any) => void;
   onShowPaywall?: (payload?: any) => void;
@@ -233,6 +358,7 @@ export function showRampkitOverlay(opts: {
         screens={opts.screens}
         variables={opts.variables}
         requiredScripts={opts.requiredScripts}
+        rampkitContext={opts.rampkitContext}
         prebuiltDocs={prebuiltDocs}
         onRequestClose={() => {
           activeCloseHandler = null;
@@ -279,11 +405,12 @@ export function preloadRampkitOverlay(opts: {
   screens: ScreenPayload[];
   variables?: Record<string, any>;
   requiredScripts?: string[];
+  rampkitContext?: RampKitContext;
 }) {
   try {
     if (preloadCache.has(opts.onboardingId)) return;
     const docs = opts.screens.map((s) =>
-      buildHtmlDocument(s, opts.variables, opts.requiredScripts)
+      buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext)
     );
     preloadCache.set(opts.onboardingId, docs);
     // Mount a hidden WebView to warm up the WebView process and cache
@@ -304,7 +431,7 @@ export function preloadRampkitOverlay(opts: {
           originWhitelist={["*"]}
           source={{ html: docs[0] || "<html></html>" }}
           injectedJavaScriptBeforeContentLoaded={injectedHardening}
-          injectedJavaScript={injectedNoSelect + injectedVarsHandler}
+          injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedTemplateResolver}
           automaticallyAdjustContentInsets={false}
           contentInsetAdjustmentBehavior="never"
           bounces={false}
@@ -325,7 +452,8 @@ export function preloadRampkitOverlay(opts: {
 function buildHtmlDocument(
   screen: ScreenPayload,
   variables?: Record<string, any>,
-  requiredScripts?: string[]
+  requiredScripts?: string[],
+  rampkitContext?: RampKitContext
 ) {
   const css = screen.css || "";
   const html = screen.html || "";
@@ -363,6 +491,33 @@ function buildHtmlDocument(
       return "";
     }
   })();
+  
+  // Default context if not provided
+  const context: RampKitContext = rampkitContext || {
+    device: {
+      platform: "unknown",
+      model: "unknown",
+      locale: "en_US",
+      language: "en",
+      country: "US",
+      currencyCode: "USD",
+      currencySymbol: "$",
+      appVersion: "1.0.0",
+      buildNumber: "1",
+      bundleId: "",
+      interfaceStyle: "light",
+      timezone: 0,
+      daysSinceInstall: 0,
+    },
+    user: {
+      id: "",
+      isNewUser: true,
+      hasAppleSearchAdsAttribution: false,
+      sessionId: "",
+      installedAt: new Date().toISOString(),
+    },
+  };
+  
   return `<!doctype html>
 <html>
 <head>
@@ -376,6 +531,9 @@ ${scripts}
 <body>
 ${html}
 <script>
+// Device and user context for template resolution
+window.rampkitContext = ${JSON.stringify(context)};
+// State variables from onboarding
 window.__rampkitVariables = ${JSON.stringify(variables || {})};
 ${js}
 </script>
@@ -388,6 +546,7 @@ function Overlay(props: {
   screens: ScreenPayload[];
   variables?: Record<string, any>;
   requiredScripts?: string[];
+  rampkitContext?: RampKitContext;
   prebuiltDocs?: string[];
   onRequestClose: () => void;
   onOnboardingFinished?: (payload?: any) => void;
@@ -600,9 +759,9 @@ function Overlay(props: {
     () =>
       props.prebuiltDocs ||
       props.screens.map((s) =>
-        buildHtmlDocument(s, props.variables, props.requiredScripts)
+        buildHtmlDocument(s, props.variables, props.requiredScripts, props.rampkitContext)
       ),
-    [props.prebuiltDocs, props.screens, props.variables, props.requiredScripts]
+    [props.prebuiltDocs, props.screens, props.variables, props.requiredScripts, props.rampkitContext]
   );
 
   React.useEffect(() => {
@@ -775,7 +934,7 @@ function Overlay(props: {
               originWhitelist={["*"]}
               source={{ html: doc }}
               injectedJavaScriptBeforeContentLoaded={injectedHardening}
-              injectedJavaScript={injectedNoSelect + injectedVarsHandler}
+              injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedTemplateResolver}
               automaticallyAdjustContentInsets={false}
               contentInsetAdjustmentBehavior="never"
               bounces={false}
