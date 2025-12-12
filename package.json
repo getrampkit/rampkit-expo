@@ -1,6 +1,6 @@
 {
   "name": "rampkit-expo-dev",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "description": "The Expo SDK for RampKit. Build, test, and personalize app onboardings with instant updates.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
