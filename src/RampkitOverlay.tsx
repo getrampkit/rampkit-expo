@@ -517,14 +517,9 @@ function Overlay(props: {
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const fadeOpacity = useRef(new Animated.Value(0)).current;
   
-  // slideFade animation values
-  const slideFadeOutgoingOpacity = useRef(new Animated.Value(1)).current;
-  const slideFadeOutgoingTranslateX = useRef(new Animated.Value(0)).current;
-  const slideFadeIncomingOpacity = useRef(new Animated.Value(0)).current;
-  const slideFadeIncomingTranslateX = useRef(new Animated.Value(SLIDE_FADE_OFFSET)).current;
-  const [slideFadeActive, setSlideFadeActive] = useState(false);
-  const [slideFadeOutgoingIndex, setSlideFadeOutgoingIndex] = useState(null as number | null);
-  const [slideFadeIncomingIndex, setSlideFadeIncomingIndex] = useState(null as number | null);
+  // slideFade animation values - animates the PagerView container
+  const pagerOpacity = useRef(new Animated.Value(1)).current;
+  const pagerTranslateX = useRef(new Animated.Value(0)).current;
   
   const allLoaded = loadedCount >= props.screens.length;
   const hasTrackedInitialScreen = useRef(false);
@@ -612,8 +607,8 @@ function Overlay(props: {
       return;
     }
 
-    // slideFade animation: simultaneous opacity and translateX animation
-    // for both outgoing and incoming views
+    // slideFade animation: smooth slide + fade transition
+    // Animates the PagerView container out, switches page, then animates back in
     if (animationType === "slidefade") {
       setIsTransitioning(true);
       
@@ -621,69 +616,51 @@ function Overlay(props: {
       const isForward = nextIndex > index;
       const direction = isForward ? 1 : -1;
       
-      // Set up the slideFade overlay indices
-      setSlideFadeOutgoingIndex(index);
-      setSlideFadeIncomingIndex(nextIndex);
-      
-      // Set initial positions for the animation
-      // Outgoing: starts visible at position 0
-      slideFadeOutgoingOpacity.setValue(1);
-      slideFadeOutgoingTranslateX.setValue(0);
-      // Incoming: starts invisible, offset in the direction we're navigating
-      slideFadeIncomingOpacity.setValue(0);
-      slideFadeIncomingTranslateX.setValue(SLIDE_FADE_OFFSET * direction);
-      
-      // Activate the slideFade overlay
-      setSlideFadeActive(true);
-      
-      // Switch the underlying PagerView immediately (without animation)
-      // so when the overlay fades away, the correct page is underneath
-      requestAnimationFrame(() => {
-        // @ts-ignore: method exists on PagerView instance
-        pagerRef.current?.setPageWithoutAnimation?.(nextIndex) ??
-          pagerRef.current?.setPage(nextIndex);
-      });
-      
-      // Run all 4 animations simultaneously
+      const halfDuration = SLIDE_FADE_DURATION / 2;
       const timingConfig = {
-        duration: SLIDE_FADE_DURATION,
+        duration: halfDuration,
         easing: Easing.out(Easing.ease),
         useNativeDriver: true,
       };
       
+      // Phase 1: Fade out and slide the current page in exit direction
       Animated.parallel([
-        // Outgoing: fade out and slide in opposite direction
-        Animated.timing(slideFadeOutgoingOpacity, {
+        Animated.timing(pagerOpacity, {
           toValue: 0,
           ...timingConfig,
         }),
-        Animated.timing(slideFadeOutgoingTranslateX, {
-          toValue: -SLIDE_FADE_OFFSET * direction,
-          ...timingConfig,
-        }),
-        // Incoming: fade in and slide to center
-        Animated.timing(slideFadeIncomingOpacity, {
-          toValue: 1,
-          ...timingConfig,
-        }),
-        Animated.timing(slideFadeIncomingTranslateX, {
-          toValue: 0,
+        Animated.timing(pagerTranslateX, {
+          toValue: -SLIDE_FADE_OFFSET * direction * 0.5, // Slide out in opposite direction
           ...timingConfig,
         }),
       ]).start(() => {
-        // Animation complete - deactivate overlay and reset values
-        setSlideFadeActive(false);
-        setSlideFadeOutgoingIndex(null);
-        setSlideFadeIncomingIndex(null);
+        // Switch page instantly while invisible
+        // @ts-ignore: method exists on PagerView instance
+        pagerRef.current?.setPageWithoutAnimation?.(nextIndex) ??
+          pagerRef.current?.setPage(nextIndex);
         
-        // Reset outgoing view values for next animation
-        slideFadeOutgoingOpacity.setValue(1);
-        slideFadeOutgoingTranslateX.setValue(0);
+        // Set up for incoming animation - start from the direction we're navigating from
+        pagerTranslateX.setValue(SLIDE_FADE_OFFSET * direction * 0.5);
         
-        // Send vars to the new page
-        sendVarsToWebView(nextIndex);
-        
-        setIsTransitioning(false);
+        // Phase 2: Fade in and slide the new page to center
+        Animated.parallel([
+          Animated.timing(pagerOpacity, {
+            toValue: 1,
+            duration: halfDuration,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pagerTranslateX, {
+            toValue: 0,
+            duration: halfDuration,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          // Send vars to the new page
+          sendVarsToWebView(nextIndex);
+          setIsTransitioning(false);
+        });
       });
       
       return;
@@ -974,15 +951,24 @@ function Overlay(props: {
       ]}
       pointerEvents={visible && !isClosing ? "auto" : "none"}
     >
-      <PagerView
-        ref={pagerRef}
-        style={StyleSheet.absoluteFill}
-        scrollEnabled={false}
-        initialPage={0}
-        onPageSelected={onPageSelected}
-        offscreenPageLimit={props.screens.length}
-        overScrollMode="never"
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            opacity: pagerOpacity,
+            transform: [{ translateX: pagerTranslateX }],
+          },
+        ]}
       >
+        <PagerView
+          ref={pagerRef}
+          style={StyleSheet.absoluteFill}
+          scrollEnabled={false}
+          initialPage={0}
+          onPageSelected={onPageSelected}
+          offscreenPageLimit={props.screens.length}
+          overScrollMode="never"
+        >
         {docs.map((doc: any, i: number) => (
           <View
             key={props.screens[i].id}
@@ -1297,84 +1283,8 @@ function Overlay(props: {
             />
           </View>
         ))}
-      </PagerView>
-      
-      {/* slideFade animation overlay - renders during slideFade transitions */}
-      {slideFadeActive && slideFadeOutgoingIndex !== null && slideFadeIncomingIndex !== null && (
-        <>
-          {/* Outgoing view - animates out with opacity and translateX */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFillObject,
-              styles.slideFadeLayer,
-              {
-                opacity: slideFadeOutgoingOpacity,
-                transform: [{ translateX: slideFadeOutgoingTranslateX }],
-              },
-            ]}
-          >
-            <WebView
-              style={styles.webview}
-              originWhitelist={["*"]}
-              source={{ html: docs[slideFadeOutgoingIndex] }}
-              injectedJavaScriptBeforeContentLoaded={injectedHardening}
-              injectedJavaScript={injectedNoSelect + injectedVarsHandler}
-              automaticallyAdjustContentInsets={false}
-              contentInsetAdjustmentBehavior="never"
-              bounces={false}
-              scrollEnabled={false}
-              overScrollMode="never"
-              scalesPageToFit={false}
-              showsHorizontalScrollIndicator={false}
-              dataDetectorTypes="none"
-              allowsLinkPreview={false}
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-              cacheEnabled
-              javaScriptEnabled
-              domStorageEnabled
-              hideKeyboardAccessoryView={true}
-            />
-          </Animated.View>
-          
-          {/* Incoming view - layered on top, animates in with opacity and translateX */}
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFillObject,
-              styles.slideFadeLayer,
-              {
-                opacity: slideFadeIncomingOpacity,
-                transform: [{ translateX: slideFadeIncomingTranslateX }],
-              },
-            ]}
-          >
-            <WebView
-              style={styles.webview}
-              originWhitelist={["*"]}
-              source={{ html: docs[slideFadeIncomingIndex] }}
-              injectedJavaScriptBeforeContentLoaded={injectedHardening}
-              injectedJavaScript={injectedNoSelect + injectedVarsHandler}
-              automaticallyAdjustContentInsets={false}
-              contentInsetAdjustmentBehavior="never"
-              bounces={false}
-              scrollEnabled={false}
-              overScrollMode="never"
-              scalesPageToFit={false}
-              showsHorizontalScrollIndicator={false}
-              dataDetectorTypes="none"
-              allowsLinkPreview={false}
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-              cacheEnabled
-              javaScriptEnabled
-              domStorageEnabled
-              hideKeyboardAccessoryView={true}
-            />
-          </Animated.View>
-        </>
-      )}
+        </PagerView>
+      </Animated.View>
       
       {/* Fade curtain overlays above pages to mask page switch */}
       <Animated.View
@@ -1406,10 +1316,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   webview: { flex: 1 },
   curtain: { backgroundColor: "white" },
-  slideFadeLayer: {
-    backgroundColor: "white",
-    zIndex: 10000,
-  },
 });
 
 export default Overlay;
