@@ -537,21 +537,31 @@ function Overlay(props) {
         return `(function(){try{document.dispatchEvent(new MessageEvent('message',{data:${json}}));}catch(e){}})();`;
     }
     // Build a script that directly sets variables and triggers updates
-    // This is more reliable than dispatching events which may not be caught
+    // This matches the iOS SDK's approach of dispatching a MessageEvent
     function buildDirectVarsScript(vars) {
-        const json = JSON.stringify(vars)
+        const payload = { type: "rampkit:variables", vars };
+        const json = JSON.stringify(payload)
             .replace(/\\/g, "\\\\")
             .replace(/`/g, "\\`");
         return `(function(){
       try {
-        var newVars = ${json};
+        var payload = ${json};
+        var newVars = payload.vars;
         // Directly update the global variables object
         window.__rampkitVariables = newVars;
         // Call the handler if available
         if (typeof window.__rkHandleVarsUpdate === 'function') {
           window.__rkHandleVarsUpdate(newVars);
         }
-        // Dispatch custom event for any listeners
+        // Dispatch MessageEvent (matches iOS SDK format) - this is what the page's JS listens for
+        try {
+          document.dispatchEvent(new MessageEvent('message', {data: payload}));
+        } catch(e) {}
+        // Also dispatch on window for compatibility
+        try {
+          window.dispatchEvent(new MessageEvent('message', {data: payload}));
+        } catch(e) {}
+        // Also dispatch custom event for any listeners
         try {
           document.dispatchEvent(new CustomEvent('rampkit:vars-updated', {detail: newVars}));
         } catch(e) {}
