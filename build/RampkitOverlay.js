@@ -387,6 +387,8 @@ function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext) {
     // Resolve device/user templates in HTML BEFORE sending to WebView
     const originalHtml = html;
     html = resolveContextTemplates(html, context);
+    // Replace literal \n with <br> for proper line breaks in displayed text
+    html = html.replace(/\\n/g, '<br>');
     if (originalHtml !== html) {
         console.log("[RampKit] Templates were resolved in HTML");
     }
