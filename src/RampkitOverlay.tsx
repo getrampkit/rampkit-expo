@@ -138,113 +138,146 @@ export const injectedVarsHandler = `
 
 // Button tap animation script - handles spring animations for interactive elements
 // Triggers on touchstart (not click) for immediate feedback
+// Uses inline styles for maximum compatibility
 export const injectedButtonAnimations = `
 (function(){
   try {
     if (window.__rkButtonAnimApplied) return true;
     window.__rkButtonAnimApplied = true;
     
-    // Add styles for button animations
-    var style = document.createElement('style');
-    style.id = 'rk-button-anim-style';
-    style.textContent = 
-      '*.rk-pressed, .rk-pressed, [class*="rk-pressed"] {' +
-      '  transform: scale(0.97) !important;' +
-      '  -webkit-transform: scale(0.97) !important;' +
-      '  opacity: 0.8 !important;' +
-      '  transform-origin: center center !important;' +
-      '  -webkit-transform-origin: center center !important;' +
-      '  transition: transform 80ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 80ms cubic-bezier(0.25, 0.1, 0.25, 1), -webkit-transform 80ms cubic-bezier(0.25, 0.1, 0.25, 1) !important;' +
-      '  -webkit-transition: -webkit-transform 80ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 80ms cubic-bezier(0.25, 0.1, 0.25, 1) !important;' +
-      '}' +
-      '*.rk-released, .rk-released, [class*="rk-released"] {' +
-      '  transform: scale(1) !important;' +
-      '  -webkit-transform: scale(1) !important;' +
-      '  opacity: 1 !important;' +
-      '  transform-origin: center center !important;' +
-      '  -webkit-transform-origin: center center !important;' +
-      '  transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 280ms cubic-bezier(0.34, 1.56, 0.64, 1), -webkit-transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1) !important;' +
-      '  -webkit-transition: -webkit-transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 280ms cubic-bezier(0.34, 1.56, 0.64, 1) !important;' +
-      '}';
-    document.head.appendChild(style);
+    var pressed = null;
+    var pressedOriginalTransform = '';
+    var pressedOriginalOpacity = '';
+    var pressedOriginalTransition = '';
+    var releaseTimer = null;
     
-    // Find any interactive element in the parent chain
+    // Find interactive element - very permissive, looks for any clickable-looking element
     function findInteractive(el) {
       var current = el;
-      for (var i = 0; i < 15 && current; i++) {
-        if (!current.tagName) { current = current.parentElement; continue; }
+      for (var i = 0; i < 20 && current && current !== document.body && current !== document.documentElement; i++) {
+        if (!current || !current.tagName) { current = current.parentElement; continue; }
         var tag = current.tagName.toLowerCase();
-        // Match common interactive elements
+        
+        // Skip tiny elements (likely icons inside buttons)
+        var rect = current.getBoundingClientRect();
+        if (rect.width < 20 || rect.height < 20) { current = current.parentElement; continue; }
+        
+        // Match standard interactive elements
         if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select') return current;
-        // Match elements with click handlers or data attributes
+        
+        // Match elements with any data attribute containing action/navigate/tap/click
+        var attrs = current.attributes;
+        if (attrs) {
+          for (var j = 0; j < attrs.length; j++) {
+            var attrName = attrs[j].name.toLowerCase();
+            if (attrName.indexOf('click') !== -1 || attrName.indexOf('tap') !== -1 || 
+                attrName.indexOf('action') !== -1 || attrName.indexOf('navigate') !== -1 ||
+                attrName.indexOf('press') !== -1) {
+              return current;
+            }
+          }
+        }
+        
+        // Match elements with onclick
         if (current.onclick || current.hasAttribute('onclick')) return current;
-        if (current.hasAttribute('data-rampkit-action')) return current;
-        if (current.hasAttribute('data-rampkit-navigate')) return current;
-        if (current.hasAttribute('data-rampkit-tap')) return current;
+        
         // Match elements with role="button" or tabindex
         if (current.getAttribute('role') === 'button') return current;
-        if (current.hasAttribute('tabindex')) return current;
-        // Match common button classes
-        if (current.className && typeof current.className === 'string') {
-          var cls = current.className.toLowerCase();
-          if (cls.indexOf('btn') !== -1 || cls.indexOf('button') !== -1 || cls.indexOf('cta') !== -1 || cls.indexOf('interactive') !== -1) return current;
+        
+        // Match any element with an ID containing button/btn/cta
+        var id = current.id || '';
+        if (id && (id.toLowerCase().indexOf('button') !== -1 || id.toLowerCase().indexOf('btn') !== -1 || id.toLowerCase().indexOf('cta') !== -1)) return current;
+        
+        // Match elements with button-like classes
+        var className = current.className;
+        if (className && typeof className === 'string') {
+          var cls = className.toLowerCase();
+          if (cls.indexOf('btn') !== -1 || cls.indexOf('button') !== -1 || cls.indexOf('cta') !== -1 || 
+              cls.indexOf('clickable') !== -1 || cls.indexOf('tappable') !== -1 || cls.indexOf('pressable') !== -1) {
+            return current;
+          }
         }
-        // Match elements with cursor pointer style
+        
+        // Match elements with cursor pointer
         try {
           var computed = window.getComputedStyle(current);
           if (computed && computed.cursor === 'pointer') return current;
         } catch(e) {}
+        
         current = current.parentElement;
       }
       return null;
     }
     
-    var pressed = null;
-    var releaseTimer = null;
+    function applyPressedStyle(el) {
+      if (!el || !el.style) return;
+      // Save original styles
+      pressedOriginalTransform = el.style.transform || '';
+      pressedOriginalOpacity = el.style.opacity || '';
+      pressedOriginalTransition = el.style.transition || '';
+      // Apply pressed style with inline styles for maximum specificity
+      el.style.transition = 'transform 80ms cubic-bezier(0.25, 0.1, 0.25, 1), opacity 80ms cubic-bezier(0.25, 0.1, 0.25, 1)';
+      el.style.transform = 'scale(0.97)';
+      el.style.opacity = '0.8';
+    }
     
-    function onStart(e) {
+    function applyReleasedStyle(el) {
+      if (!el || !el.style) return;
+      // Apply spring-back animation
+      el.style.transition = 'transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 280ms cubic-bezier(0.34, 1.56, 0.64, 1)';
+      el.style.transform = pressedOriginalTransform || 'scale(1)';
+      el.style.opacity = pressedOriginalOpacity || '1';
+    }
+    
+    function resetStyle(el) {
+      if (!el || !el.style) return;
+      el.style.transform = pressedOriginalTransform;
+      el.style.opacity = pressedOriginalOpacity;
+      el.style.transition = pressedOriginalTransition;
+    }
+    
+    function onTouchStart(e) {
       try {
         var target = findInteractive(e.target);
         if (!target) return;
         if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = null; }
-        target.classList.remove('rk-released');
-        target.classList.add('rk-pressed');
+        if (pressed && pressed !== target) { resetStyle(pressed); }
+        applyPressedStyle(target);
         pressed = target;
-      } catch(err) { console.log('[RK] touch error:', err); }
+      } catch(err) {}
     }
     
-    function onEnd(e) {
+    function onTouchEnd(e) {
       try {
         if (!pressed) return;
         var t = pressed;
-        t.classList.remove('rk-pressed');
-        t.classList.add('rk-released');
+        applyReleasedStyle(t);
         releaseTimer = setTimeout(function() {
-          t.classList.remove('rk-released');
+          resetStyle(t);
           releaseTimer = null;
         }, 300);
         pressed = null;
       } catch(err) {}
     }
     
-    function onCancel(e) {
+    function onTouchCancel(e) {
       try {
         if (!pressed) return;
-        pressed.classList.remove('rk-pressed', 'rk-released');
+        resetStyle(pressed);
         pressed = null;
         if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = null; }
       } catch(err) {}
     }
     
-    // Capture phase for immediate response
-    document.addEventListener('touchstart', onStart, { passive: true, capture: true });
-    document.addEventListener('touchend', onEnd, { passive: true, capture: true });
-    document.addEventListener('touchcancel', onCancel, { passive: true, capture: true });
-    document.addEventListener('mousedown', onStart, { passive: true, capture: true });
-    document.addEventListener('mouseup', onEnd, { passive: true, capture: true });
+    // Use capture phase for immediate response before any other handlers
+    document.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
+    document.addEventListener('touchend', onTouchEnd, { passive: true, capture: true });
+    document.addEventListener('touchcancel', onTouchCancel, { passive: true, capture: true });
+    // Mouse events for testing
+    document.addEventListener('mousedown', onTouchStart, { passive: true, capture: true });
+    document.addEventListener('mouseup', onTouchEnd, { passive: true, capture: true });
     
-    console.log('[RK] Button animations initialized');
-  } catch (err) { console.log('[RK] Button anim error:', err); }
+  } catch (err) {}
   true;
 })();
 `;
@@ -420,7 +453,7 @@ export function preloadRampkitOverlay(opts: {
         <WebView
           originWhitelist={["*"]}
           source={{ html: docs[0] || "<html></html>" }}
-          injectedJavaScriptBeforeContentLoaded={injectedHardening}
+          injectedJavaScriptBeforeContentLoaded={injectedHardening + injectedButtonAnimations}
           injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
           automaticallyAdjustContentInsets={false}
           contentInsetAdjustmentBehavior="never"
@@ -1092,7 +1125,7 @@ function Overlay(props: {
               style={styles.webview}
               originWhitelist={["*"]}
               source={{ html: doc }}
-              injectedJavaScriptBeforeContentLoaded={injectedHardening}
+              injectedJavaScriptBeforeContentLoaded={injectedHardening + injectedButtonAnimations}
               injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
               automaticallyAdjustContentInsets={false}
               contentInsetAdjustmentBehavior="never"
