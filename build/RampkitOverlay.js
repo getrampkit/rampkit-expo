@@ -387,8 +387,9 @@ function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext) {
     // Resolve device/user templates in HTML BEFORE sending to WebView
     const originalHtml = html;
     html = resolveContextTemplates(html, context);
-    // Replace literal \n with <br> for proper line breaks in displayed text
-    html = html.replace(/\\n/g, '<br>');
+    // Convert literal \n escape sequences to actual newlines
+    // CSS white-space: pre-line will render them as line breaks
+    html = html.replace(/\\n/g, '\n');
     if (originalHtml !== html) {
         console.log("[RampKit] Templates were resolved in HTML");
     }
@@ -403,7 +404,7 @@ function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext) {
 ${preconnectTags}
 ${scripts}
 <style>${css}</style>
-<style>html,body{margin:0;padding:0;overflow-x:hidden} *{-webkit-tap-highlight-color: rgba(0,0,0,0);} ::selection{background:transparent}::-moz-selection{background:transparent}</style>
+<style>html,body{margin:0;padding:0;overflow-x:hidden;white-space:pre-line} *{-webkit-tap-highlight-color: rgba(0,0,0,0);} ::selection{background:transparent}::-moz-selection{background:transparent}</style>
 </head>
 <body>
 ${html}
