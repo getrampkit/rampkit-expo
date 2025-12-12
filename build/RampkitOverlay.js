@@ -432,8 +432,11 @@ function Overlay(props) {
     const varsRef = (0, react_1.useRef)({});
     // hold refs for injection
     const webviewsRef = (0, react_1.useRef)([]);
-    // track when we last initialized a given page with host vars (to filter stale defaults)
-    const lastInitSendRef = (0, react_1.useRef)([]);
+    // Track when we last SENT vars to each page (for stale value filtering)
+    // This helps filter out default/cached values that pages send back after receiving updates
+    const lastVarsSendTimeRef = (0, react_1.useRef)([]);
+    // Stale value window in milliseconds - matches iOS SDK (600ms)
+    const STALE_VALUE_WINDOW_MS = 600;
     // Fade-in when overlay becomes visible
     react_1.default.useEffect(() => {
         if (visible && !isClosing) {
@@ -567,13 +570,9 @@ function Overlay(props) {
             return;
         if (__DEV__)
             console.log("[Rampkit] sendVarsToWebView", i, varsRef.current, { isInitialLoad });
-        // Only update the stale filter timestamp during initial page load,
-        // not when syncing vars on page selection. This prevents the filter
-        // from incorrectly rejecting legitimate user interactions that happen
-        // immediately after navigating to a screen.
-        if (isInitialLoad) {
-            lastInitSendRef.current[i] = Date.now();
-        }
+        // Track when we send vars to this page for stale value filtering
+        // This helps us ignore default/cached values that pages echo back
+        lastVarsSendTimeRef.current[i] = Date.now();
         // Use direct variable setting instead of MessageEvent dispatch
         // This is more reliable as it doesn't depend on event listeners being set up
         // @ts-ignore: injectJavaScript exists on WebView instance
@@ -592,6 +591,7 @@ function Overlay(props) {
                 vars: varsRef.current,
             });
         const script = buildDirectVarsScript(varsRef.current);
+        const now = Date.now();
         for (let i = 0; i < webviewsRef.current.length; i++) {
             // Skip the source WebView to prevent echo loops
             if (excludeIndex !== undefined && i === excludeIndex) {
@@ -599,6 +599,8 @@ function Overlay(props) {
             }
             const wv = webviewsRef.current[i];
             if (wv) {
+                // Track send time for stale value filtering
+                lastVarsSendTimeRef.current[i] = now;
                 // @ts-ignore: injectJavaScript exists on WebView instance
                 wv.injectJavaScript(script);
             }
@@ -768,22 +770,49 @@ function Overlay(props) {
                                 // JSON path
                                 const data = JSON.parse(raw);
                                 // 1) Variables from a page → update shared + broadcast to OTHER pages
-                                // This mirrors the iOS SDK pattern where the source WebView is excluded
-                                // to prevent echo loops and ensure the active screen remains responsive.
+                                // This mirrors the iOS SDK pattern with stale value filtering.
                                 if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:variables" &&
                                     (data === null || data === void 0 ? void 0 : data.vars) &&
                                     typeof data.vars === "object") {
                                     if (__DEV__)
                                         console.log("[Rampkit] received variables from page", i, data.vars);
-                                    // Accept all variable updates from pages without filtering.
-                                    // The previous filter was too aggressive and blocked legitimate
-                                    // user interactions that happened within 600ms of page load.
-                                    // We now trust that pages send correct variable updates.
+                                    // Check if this page is within the stale value window
+                                    // (we recently sent vars to it and it's echoing back defaults)
+                                    const now = Date.now();
+                                    const lastSendTime = lastVarsSendTimeRef.current[i] || 0;
+                                    const timeSinceSend = now - lastSendTime;
+                                    const isWithinStaleWindow = timeSinceSend < STALE_VALUE_WINDOW_MS;
+                                    const isActiveScreen = i === index;
+                                    if (__DEV__) {
+                                        console.log("[Rampkit] stale check:", {
+                                            pageIndex: i,
+                                            isActiveScreen,
+                                            isWithinStaleWindow,
+                                            timeSinceSend,
+                                        });
+                                    }
                                     let changed = false;
                                     const newVars = {};
                                     for (const [key, value] of Object.entries(data.vars)) {
                                         const hasHostVal = Object.prototype.hasOwnProperty.call(varsRef.current, key);
                                         const hostVal = varsRef.current[key];
+                                        // Stale value filtering (matches iOS SDK behavior):
+                                        // If we're within the stale window AND this is NOT the active screen,
+                                        // don't let empty/default values overwrite existing host values.
+                                        // This prevents preloaded pages from clobbering user input with cached defaults.
+                                        if (isWithinStaleWindow && !isActiveScreen && hasHostVal) {
+                                            // If host has a non-empty value and page is sending empty/default,
+                                            // keep the host value (don't overwrite with stale data)
+                                            const hostIsNonEmpty = hostVal !== "" && hostVal !== null && hostVal !== undefined;
+                                            const incomingIsEmpty = value === "" || value === null || value === undefined;
+                                            if (hostIsNonEmpty && incomingIsEmpty) {
+                                                if (__DEV__) {
+                                                    console.log(`[Rampkit] filtering stale empty value for key "${key}": keeping "${hostVal}"`);
+                                                }
+                                                continue; // Skip this key, keep host value
+                                            }
+                                        }
+                                        // Accept the update if value is different
                                         if (!hasHostVal || hostVal !== value) {
                                             newVars[key] = value;
                                             changed = true;
