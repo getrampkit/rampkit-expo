@@ -939,17 +939,15 @@ function Overlay(props: {
                       );
                     
                     // Check if this page is within the stale value window
-                    // (we recently sent vars to it and it's echoing back defaults)
+                    // (we recently sent vars to it and it may be echoing back defaults)
                     const now = Date.now();
                     const lastSendTime = lastVarsSendTimeRef.current[i] || 0;
                     const timeSinceSend = now - lastSendTime;
                     const isWithinStaleWindow = timeSinceSend < STALE_VALUE_WINDOW_MS;
-                    const isActiveScreen = i === index;
                     
                     if (__DEV__) {
                       console.log("[Rampkit] stale check:", {
                         pageIndex: i,
-                        isActiveScreen,
                         isWithinStaleWindow,
                         timeSinceSend,
                       });
@@ -966,12 +964,11 @@ function Overlay(props: {
                       const hostVal = (varsRef.current as any)[key];
                       
                       // Stale value filtering (matches iOS SDK behavior):
-                      // If we're within the stale window AND this is NOT the active screen,
-                      // don't let empty/default values overwrite existing host values.
-                      // This prevents preloaded pages from clobbering user input with cached defaults.
-                      if (isWithinStaleWindow && !isActiveScreen && hasHostVal) {
-                        // If host has a non-empty value and page is sending empty/default,
-                        // keep the host value (don't overwrite with stale data)
+                      // If we're within the stale window, don't let empty/default values
+                      // overwrite existing non-empty host values.
+                      // This prevents pages from clobbering user input with cached defaults
+                      // when they first become active/visible.
+                      if (isWithinStaleWindow && hasHostVal) {
                         const hostIsNonEmpty = hostVal !== "" && hostVal !== null && hostVal !== undefined;
                         const incomingIsEmpty = value === "" || value === null || value === undefined;
                         if (hostIsNonEmpty && incomingIsEmpty) {
