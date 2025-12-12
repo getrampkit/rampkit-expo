@@ -667,14 +667,24 @@ function Overlay(props: {
     wv.injectJavaScript(buildDirectVarsScript(varsRef.current));
   }
 
-  function broadcastVars() {
+  /**
+   * Broadcast variables to all WebViews, optionally excluding one.
+   * This mirrors the iOS SDK's broadcastVariables(excluding:) pattern.
+   * @param excludeIndex - Optional index of WebView to skip (typically the source of the update)
+   */
+  function broadcastVars(excludeIndex?: number) {
     if (__DEV__)
       console.log("[Rampkit] broadcastVars", {
         recipients: webviewsRef.current.length,
+        excludeIndex,
         vars: varsRef.current,
       });
     const script = buildDirectVarsScript(varsRef.current);
     for (let i = 0; i < webviewsRef.current.length; i++) {
+      // Skip the source WebView to prevent echo loops
+      if (excludeIndex !== undefined && i === excludeIndex) {
+        continue;
+      }
       const wv = webviewsRef.current[i];
       if (wv) {
         // @ts-ignore: injectJavaScript exists on WebView instance
@@ -912,7 +922,9 @@ function Overlay(props: {
                 try {
                   // JSON path
                   const data = JSON.parse(raw);
-                  // 1) Variables from a page → update shared + broadcast
+                  // 1) Variables from a page → update shared + broadcast to OTHER pages
+                  // This mirrors the iOS SDK pattern where the source WebView is excluded
+                  // to prevent echo loops and ensure the active screen remains responsive.
                   if (
                     data?.type === "rampkit:variables" &&
                     data?.vars &&
@@ -943,7 +955,9 @@ function Overlay(props: {
                     }
                     if (changed) {
                       varsRef.current = { ...varsRef.current, ...newVars };
-                      broadcastVars();
+                      // Broadcast to all WebViews EXCEPT the source (index i)
+                      // This prevents echo loops and matches iOS SDK behavior
+                      broadcastVars(i);
                     }
                     return;
                   }
