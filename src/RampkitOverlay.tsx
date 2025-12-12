@@ -136,6 +136,147 @@ export const injectedVarsHandler = `
 })();
 `;
 
+// Button tap animation script - handles spring animations for interactive elements
+// Triggers on touchstart (not click) for immediate feedback
+export const injectedButtonAnimations = `
+(function(){
+  try {
+    if (window.__rkButtonAnimApplied) return true;
+    window.__rkButtonAnimApplied = true;
+    
+    // Add styles for button animations
+    var style = document.createElement('style');
+    style.id = 'rk-button-anim-style';
+    style.innerHTML = \`
+      /* Base transition for all interactive elements */
+      [data-rampkit-action],
+      [data-rampkit-navigate],
+      [data-rampkit-tap],
+      [onclick],
+      button,
+      a[href],
+      .rk-interactive,
+      .rk-button {
+        transform: scale(1);
+        opacity: 1;
+        will-change: transform, opacity;
+      }
+      
+      /* Pressed state - applied via JS */
+      .rk-pressed {
+        transform: scale(0.97) !important;
+        opacity: 0.8 !important;
+        transition: transform 80ms cubic-bezier(0.25, 0.1, 0.25, 1), 
+                    opacity 80ms cubic-bezier(0.25, 0.1, 0.25, 1) !important;
+      }
+      
+      /* Released state - spring-like bounce back */
+      .rk-released {
+        transform: scale(1) !important;
+        opacity: 1 !important;
+        transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), 
+                    opacity 280ms cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+      }
+    \`;
+    document.head.appendChild(style);
+    
+    // Check if element is interactive
+    function isInteractive(el) {
+      if (!el || !el.tagName) return false;
+      var tag = el.tagName.toLowerCase();
+      if (tag === 'button' || tag === 'a') return true;
+      if (el.hasAttribute('data-rampkit-action')) return true;
+      if (el.hasAttribute('data-rampkit-navigate')) return true;
+      if (el.hasAttribute('data-rampkit-tap')) return true;
+      if (el.hasAttribute('onclick')) return true;
+      if (el.classList.contains('rk-interactive')) return true;
+      if (el.classList.contains('rk-button')) return true;
+      return false;
+    }
+    
+    // Find the interactive parent element
+    function findInteractiveElement(el) {
+      var current = el;
+      var maxDepth = 10; // Prevent infinite loops
+      while (current && maxDepth > 0) {
+        if (isInteractive(current)) return current;
+        current = current.parentElement;
+        maxDepth--;
+      }
+      return null;
+    }
+    
+    // Track currently pressed element
+    var pressedElement = null;
+    var pressTimeout = null;
+    
+    // Handle touch start - immediate press animation
+    function handleTouchStart(e) {
+      try {
+        var target = findInteractiveElement(e.target);
+        if (!target) return;
+        
+        // Clear any pending release animation
+        if (pressTimeout) {
+          clearTimeout(pressTimeout);
+          pressTimeout = null;
+        }
+        
+        // Remove released class and add pressed class
+        target.classList.remove('rk-released');
+        target.classList.add('rk-pressed');
+        pressedElement = target;
+      } catch(_) {}
+    }
+    
+    // Handle touch end - spring release animation
+    function handleTouchEnd(e) {
+      try {
+        if (!pressedElement) return;
+        var target = pressedElement;
+        
+        // Switch from pressed to released for spring animation
+        target.classList.remove('rk-pressed');
+        target.classList.add('rk-released');
+        
+        // Clean up after animation completes
+        pressTimeout = setTimeout(function() {
+          target.classList.remove('rk-released');
+          pressTimeout = null;
+        }, 300);
+        
+        pressedElement = null;
+      } catch(_) {}
+    }
+    
+    // Handle touch cancel - reset without animation
+    function handleTouchCancel(e) {
+      try {
+        if (!pressedElement) return;
+        pressedElement.classList.remove('rk-pressed');
+        pressedElement.classList.remove('rk-released');
+        pressedElement = null;
+        if (pressTimeout) {
+          clearTimeout(pressTimeout);
+          pressTimeout = null;
+        }
+      } catch(_) {}
+    }
+    
+    // Use capture phase to get events before they're handled
+    document.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true, capture: true });
+    document.addEventListener('touchcancel', handleTouchCancel, { passive: true, capture: true });
+    
+    // Also handle mouse events for web testing
+    document.addEventListener('mousedown', handleTouchStart, { passive: true, capture: true });
+    document.addEventListener('mouseup', handleTouchEnd, { passive: true, capture: true });
+    document.addEventListener('mouseleave', handleTouchCancel, { passive: true, capture: true });
+    
+  } catch (_) {}
+  true;
+})();
+`;
 
 export type ScreenPayload = {
   id: string;
@@ -309,7 +450,7 @@ export function preloadRampkitOverlay(opts: {
           originWhitelist={["*"]}
           source={{ html: docs[0] || "<html></html>" }}
           injectedJavaScriptBeforeContentLoaded={injectedHardening}
-          injectedJavaScript={injectedNoSelect + injectedVarsHandler}
+          injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
           automaticallyAdjustContentInsets={false}
           contentInsetAdjustmentBehavior="never"
           bounces={false}
@@ -981,7 +1122,7 @@ function Overlay(props: {
               originWhitelist={["*"]}
               source={{ html: doc }}
               injectedJavaScriptBeforeContentLoaded={injectedHardening}
-              injectedJavaScript={injectedNoSelect + injectedVarsHandler}
+              injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
               automaticallyAdjustContentInsets={false}
               contentInsetAdjustmentBehavior="never"
               bounces={false}
