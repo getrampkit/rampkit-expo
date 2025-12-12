@@ -418,6 +418,9 @@ ${js}
 </body>
 </html>`;
 }
+// slideFade animation constants
+const SLIDE_FADE_OFFSET = 200;
+const SLIDE_FADE_DURATION = 320;
 function Overlay(props) {
     const pagerRef = (0, react_1.useRef)(null);
     const [index, setIndex] = (0, react_1.useState)(0);
@@ -429,6 +432,14 @@ function Overlay(props) {
     const [onboardingCompleted, setOnboardingCompleted] = (0, react_1.useState)(false);
     const overlayOpacity = (0, react_1.useRef)(new react_native_1.Animated.Value(0)).current;
     const fadeOpacity = (0, react_1.useRef)(new react_native_1.Animated.Value(0)).current;
+    // slideFade animation values
+    const slideFadeOutgoingOpacity = (0, react_1.useRef)(new react_native_1.Animated.Value(1)).current;
+    const slideFadeOutgoingTranslateX = (0, react_1.useRef)(new react_native_1.Animated.Value(0)).current;
+    const slideFadeIncomingOpacity = (0, react_1.useRef)(new react_native_1.Animated.Value(0)).current;
+    const slideFadeIncomingTranslateX = (0, react_1.useRef)(new react_native_1.Animated.Value(SLIDE_FADE_OFFSET)).current;
+    const [slideFadeActive, setSlideFadeActive] = (0, react_1.useState)(false);
+    const [slideFadeOutgoingIndex, setSlideFadeOutgoingIndex] = (0, react_1.useState)(null);
+    const [slideFadeIncomingIndex, setSlideFadeIncomingIndex] = (0, react_1.useState)(null);
     const allLoaded = loadedCount >= props.screens.length;
     const hasTrackedInitialScreen = (0, react_1.useRef)(false);
     // shared vars across all webviews
@@ -488,9 +499,11 @@ function Overlay(props) {
             return;
         if (isTransitioning)
             return;
+        // Parse animation type case-insensitively
+        const animationType = (animation === null || animation === void 0 ? void 0 : animation.toLowerCase()) || "fade";
         // Slide animation: use PagerView's built-in animated page change
         // and skip the fade curtain overlay.
-        if (animation === "slide") {
+        if (animationType === "slide") {
             // @ts-ignore: methods exist on PagerView instance
             const pager = pagerRef.current;
             if (!pager)
@@ -508,6 +521,72 @@ function Overlay(props) {
             });
             return;
         }
+        // slideFade animation: simultaneous opacity and translateX animation
+        // for both outgoing and incoming views
+        if (animationType === "slidefade") {
+            setIsTransitioning(true);
+            // Determine direction: forward (nextIndex > index) or backward
+            const isForward = nextIndex > index;
+            const direction = isForward ? 1 : -1;
+            // Set up the slideFade overlay indices
+            setSlideFadeOutgoingIndex(index);
+            setSlideFadeIncomingIndex(nextIndex);
+            // Set initial positions for the animation
+            // Outgoing: starts visible at position 0
+            slideFadeOutgoingOpacity.setValue(1);
+            slideFadeOutgoingTranslateX.setValue(0);
+            // Incoming: starts invisible, offset in the direction we're navigating
+            slideFadeIncomingOpacity.setValue(0);
+            slideFadeIncomingTranslateX.setValue(SLIDE_FADE_OFFSET * direction);
+            // Activate the slideFade overlay
+            setSlideFadeActive(true);
+            // Switch the underlying PagerView immediately (without animation)
+            // so when the overlay fades away, the correct page is underneath
+            requestAnimationFrame(() => {
+                var _a, _b, _c, _d;
+                // @ts-ignore: method exists on PagerView instance
+                (_c = (_b = (_a = pagerRef.current) === null || _a === void 0 ? void 0 : _a.setPageWithoutAnimation) === null || _b === void 0 ? void 0 : _b.call(_a, nextIndex)) !== null && _c !== void 0 ? _c : (_d = pagerRef.current) === null || _d === void 0 ? void 0 : _d.setPage(nextIndex);
+            });
+            // Run all 4 animations simultaneously
+            const timingConfig = {
+                duration: SLIDE_FADE_DURATION,
+                easing: react_native_1.Easing.out(react_native_1.Easing.ease),
+                useNativeDriver: true,
+            };
+            react_native_1.Animated.parallel([
+                // Outgoing: fade out and slide in opposite direction
+                react_native_1.Animated.timing(slideFadeOutgoingOpacity, {
+                    toValue: 0,
+                    ...timingConfig,
+                }),
+                react_native_1.Animated.timing(slideFadeOutgoingTranslateX, {
+                    toValue: -SLIDE_FADE_OFFSET * direction,
+                    ...timingConfig,
+                }),
+                // Incoming: fade in and slide to center
+                react_native_1.Animated.timing(slideFadeIncomingOpacity, {
+                    toValue: 1,
+                    ...timingConfig,
+                }),
+                react_native_1.Animated.timing(slideFadeIncomingTranslateX, {
+                    toValue: 0,
+                    ...timingConfig,
+                }),
+            ]).start(() => {
+                // Animation complete - deactivate overlay and reset values
+                setSlideFadeActive(false);
+                setSlideFadeOutgoingIndex(null);
+                setSlideFadeIncomingIndex(null);
+                // Reset outgoing view values for next animation
+                slideFadeOutgoingOpacity.setValue(1);
+                slideFadeOutgoingTranslateX.setValue(0);
+                // Send vars to the new page
+                sendVarsToWebView(nextIndex);
+                setIsTransitioning(false);
+            });
+            return;
+        }
+        // Default fade animation: uses a white curtain overlay
         setIsTransitioning(true);
         react_native_1.Animated.timing(fadeOpacity, {
             toValue: 1,
@@ -1028,7 +1107,21 @@ function Overlay(props) {
                         }, onError: (e) => {
                             // You can surface an inline error UI here if you want
                             console.warn("WebView error:", e.nativeEvent);
-                        } }) }, props.screens[i].id))) }), (0, jsx_runtime_1.jsx)(react_native_1.Animated.View, { pointerEvents: isTransitioning ? "auto" : "none", style: [
+                        } }) }, props.screens[i].id))) }), slideFadeActive && slideFadeOutgoingIndex !== null && slideFadeIncomingIndex !== null && ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsx)(react_native_1.Animated.View, { pointerEvents: "none", style: [
+                            react_native_1.StyleSheet.absoluteFillObject,
+                            styles.slideFadeLayer,
+                            {
+                                opacity: slideFadeOutgoingOpacity,
+                                transform: [{ translateX: slideFadeOutgoingTranslateX }],
+                            },
+                        ], children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { style: styles.webview, originWhitelist: ["*"], source: { html: docs[slideFadeOutgoingIndex] }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true }) }), (0, jsx_runtime_1.jsx)(react_native_1.Animated.View, { pointerEvents: "none", style: [
+                            react_native_1.StyleSheet.absoluteFillObject,
+                            styles.slideFadeLayer,
+                            {
+                                opacity: slideFadeIncomingOpacity,
+                                transform: [{ translateX: slideFadeIncomingTranslateX }],
+                            },
+                        ], children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { style: styles.webview, originWhitelist: ["*"], source: { html: docs[slideFadeIncomingIndex] }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true }) })] })), (0, jsx_runtime_1.jsx)(react_native_1.Animated.View, { pointerEvents: isTransitioning ? "auto" : "none", style: [
                     react_native_1.StyleSheet.absoluteFillObject,
                     styles.curtain,
                     { opacity: fadeOpacity },
@@ -1051,5 +1144,9 @@ const styles = react_native_1.StyleSheet.create({
     center: { flex: 1, alignItems: "center", justifyContent: "center" },
     webview: { flex: 1 },
     curtain: { backgroundColor: "white" },
+    slideFadeLayer: {
+        backgroundColor: "white",
+        zIndex: 10000,
+    },
 });
 exports.default = Overlay;
