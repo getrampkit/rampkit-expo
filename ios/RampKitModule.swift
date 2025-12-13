@@ -181,7 +181,7 @@ public class RampKitModule: Module {
       return existingId
     }
     
-    let newId = UUID().uuidString.lowercased()
+    let newId = "rk_" + UUID().uuidString.lowercased()
     setKeychainValue(newId, forKey: userIdKey)
     return newId
   }

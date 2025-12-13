@@ -474,7 +474,7 @@ class RampKitModule : Module(), PurchasesUpdatedListener {
     if (!existingId.isNullOrEmpty()) {
       return existingId
     }
-    val newId = UUID.randomUUID().toString().lowercase()
+    val newId = "rk_" + UUID.randomUUID().toString().lowercase()
     prefs.edit().putString(USER_ID_KEY, newId).apply()
     return newId
   }

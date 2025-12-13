@@ -3,86 +3,14 @@
  * RampKit Event Manager
  * Handles event tracking for the /app-user-events endpoint
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventManager = exports.eventManager = void 0;
-const Crypto = __importStar(require("expo-crypto"));
 const constants_1 = require("./constants");
 /**
- * Generate a UUID v4 using expo-crypto
+ * Generate a UUID v4 using Math.random
+ * This is sufficient for event IDs - no crypto dependency needed
  */
-async function generateEventId() {
-    try {
-        const bytes = (await Crypto.getRandomBytesAsync(16));
-        bytes[6] = (bytes[6] & 0x0f) | 0x40;
-        bytes[8] = (bytes[8] & 0x3f) | 0x80;
-        const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0"));
-        return (hex[0] +
-            hex[1] +
-            hex[2] +
-            hex[3] +
-            "-" +
-            hex[4] +
-            hex[5] +
-            "-" +
-            hex[6] +
-            hex[7] +
-            "-" +
-            hex[8] +
-            hex[9] +
-            "-" +
-            hex[10] +
-            hex[11] +
-            hex[12] +
-            hex[13] +
-            hex[14] +
-            hex[15]);
-    }
-    catch (_a) {
-        // Fallback using Math.random
-        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-            const r = (Math.random() * 16) | 0;
-            const v = c === "x" ? r : (r & 0x3) | 0x8;
-            return v.toString(16);
-        });
-    }
-}
-/**
- * Synchronous UUID generator for when async is not practical
- */
-function generateEventIdSync() {
+function generateEventId() {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
         const r = (Math.random() * 16) | 0;
         const v = c === "x" ? r : (r & 0x3) | 0x8;
@@ -205,7 +133,7 @@ class EventManager {
             console.warn("[RampKit] EventManager: Not initialized, skipping event:", eventName);
             return;
         }
-        const eventId = generateEventIdSync();
+        const eventId = generateEventId();
         const occurredAt = new Date().toISOString();
         const context = {
             screenName: (_a = contextOverrides === null || contextOverrides === void 0 ? void 0 : contextOverrides.screenName) !== null && _a !== void 0 ? _a : this.currentScreenName,

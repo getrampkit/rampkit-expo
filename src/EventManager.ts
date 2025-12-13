@@ -3,7 +3,6 @@
  * Handles event tracking for the /app-user-events endpoint
  */
 
-import * as Crypto from "expo-crypto";
 import {
   DeviceInfo,
   EventDevice,
@@ -14,52 +13,10 @@ import {
 import { ENDPOINTS, SUPABASE_ANON_KEY } from "./constants";
 
 /**
- * Generate a UUID v4 using expo-crypto
+ * Generate a UUID v4 using Math.random
+ * This is sufficient for event IDs - no crypto dependency needed
  */
-async function generateEventId(): Promise<string> {
-  try {
-    const bytes = (await Crypto.getRandomBytesAsync(16)) as Uint8Array;
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex: string[] = Array.from(bytes).map((b: number) =>
-      b.toString(16).padStart(2, "0")
-    );
-    return (
-      hex[0] +
-      hex[1] +
-      hex[2] +
-      hex[3] +
-      "-" +
-      hex[4] +
-      hex[5] +
-      "-" +
-      hex[6] +
-      hex[7] +
-      "-" +
-      hex[8] +
-      hex[9] +
-      "-" +
-      hex[10] +
-      hex[11] +
-      hex[12] +
-      hex[13] +
-      hex[14] +
-      hex[15]
-    );
-  } catch {
-    // Fallback using Math.random
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  }
-}
-
-/**
- * Synchronous UUID generator for when async is not practical
- */
-function generateEventIdSync(): string {
+function generateEventId(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;
@@ -204,7 +161,7 @@ class EventManager {
       return;
     }
 
-    const eventId = generateEventIdSync();
+    const eventId = generateEventId();
     const occurredAt = new Date().toISOString();
 
     const context: EventContext = {
