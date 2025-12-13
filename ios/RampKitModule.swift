@@ -471,18 +471,15 @@ public class RampKitModule: Module {
       if transaction.isUpgraded {
         eventName = "subscription_upgraded"
       } else {
-        switch transaction.productType {
-        case .autoRenewable:
+        // Determine event based on product type
+        let productType = transaction.productType
+        if productType == .autoRenewable {
           if transaction.originalID == transaction.id {
             eventName = "purchase_completed"
           } else {
             eventName = "subscription_renewed"
           }
-        case .consumable, .nonConsumable:
-          eventName = "purchase_completed"
-        case .nonRenewable:
-          eventName = "purchase_completed"
-        @unknown default:
+        } else {
           eventName = "purchase_completed"
         }
       }
@@ -539,12 +536,17 @@ public class RampKitModule: Module {
   
   @available(iOS 15.0, *)
   private func mapProductType(_ type: Product.ProductType) -> String {
-    switch type {
-    case .consumable: return "consumable"
-    case .nonConsumable: return "non_consumable"
-    case .autoRenewable: return "auto_renewable"
-    case .nonRenewable: return "non_renewable"
-    @unknown default: return "unknown"
+    // Use if-else to avoid switch exhaustiveness issues with resilient enums
+    if type == .consumable {
+      return "consumable"
+    } else if type == .nonConsumable {
+      return "non_consumable"
+    } else if type == .autoRenewable {
+      return "auto_renewable"
+    } else if type == .nonRenewable {
+      return "non_renewable"
+    } else {
+      return "unknown"
     }
   }
   
