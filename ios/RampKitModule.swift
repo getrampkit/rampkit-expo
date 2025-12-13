@@ -450,6 +450,8 @@ public class RampKitModule: Module {
       throw error
     case .verified(let safe):
       return safe
+    @unknown default:
+      fatalError("Unknown VerificationResult case")
     }
   }
   
@@ -618,7 +620,8 @@ public class RampKitModule: Module {
       switch UITraitCollection.current.userInterfaceStyle {
       case .dark: return "dark"
       case .light: return "light"
-      default: return "unspecified"
+      case .unspecified: return "unspecified"
+      @unknown default: return "unspecified"
       }
     }
     return "light"
