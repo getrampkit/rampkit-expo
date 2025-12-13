@@ -480,7 +480,7 @@ public class RampKitModule: Module {
           eventName = "purchase_completed"
         case .nonRenewable:
           eventName = "purchase_completed"
-        default:
+        @unknown default:
           eventName = "purchase_completed"
         }
       }
@@ -498,7 +498,11 @@ public class RampKitModule: Module {
     
     properties["quantity"] = transaction.purchasedQuantity
     properties["productType"] = mapProductType(transaction.productType)
-    properties["environment"] = transaction.environment.rawValue
+    
+    // environment property is only available in iOS 16.0+
+    if #available(iOS 16.0, *) {
+      properties["environment"] = transaction.environment.rawValue
+    }
     
     if let webOrderLineItemID = transaction.webOrderLineItemID {
       properties["webOrderLineItemId"] = webOrderLineItemID
