@@ -425,21 +425,36 @@ function preloadRampkitOverlay(opts) {
     }
 }
 /**
+ * Decode HTML entities in a string
+ */
+function decodeHtmlEntities(str) {
+    return str
+        .replace(/&quot;/g, '"')
+        .replace(/&#34;/g, '"')
+        .replace(/&#x22;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&#39;/g, "'")
+        .replace(/&#x27;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+}
+/**
  * Evaluate a comparison condition against variables
  * Supports: ==, !=, >, <, >=, <=, and truthy checks
  */
 function evaluateCondition(condition, vars) {
-    condition = condition.trim();
+    condition = decodeHtmlEntities(condition.trim());
     // Match comparison operators: ==, !=, >=, <=, >, <
     const comparisonMatch = condition.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
     if (comparisonMatch) {
         const [, varName, operator, rawRight] = comparisonMatch;
         const leftValue = vars.hasOwnProperty(varName) ? vars[varName] : undefined;
-        let rightValue = rawRight.trim();
+        let rightValue = decodeHtmlEntities(rawRight.trim());
         // Parse right side - could be a quoted string or a number or a variable
         if ((rightValue.startsWith('"') && rightValue.endsWith('"')) ||
             (rightValue.startsWith("'") && rightValue.endsWith("'"))) {
-            // Quoted string literal
+            // Quoted string literal - strip the quotes
             rightValue = rightValue.slice(1, -1);
         }
         else if (!isNaN(Number(rightValue))) {
@@ -494,10 +509,13 @@ function evaluateCondition(condition, vars) {
  * Returns the resolved value, handling both quoted strings and variable references
  */
 function parseTernaryValue(value, vars) {
-    value = value.trim();
-    // Check if it's a quoted string
-    if ((value.startsWith('"') && value.endsWith('"')) ||
-        (value.startsWith("'") && value.endsWith("'"))) {
+    value = decodeHtmlEntities(value.trim());
+    // Check if it's a quoted string (double quotes)
+    if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+        return value.slice(1, -1);
+    }
+    // Check if it's a quoted string (single quotes)
+    if (value.startsWith("'") && value.endsWith("'") && value.length >= 2) {
         return value.slice(1, -1);
     }
     // Otherwise treat as a variable reference
@@ -516,16 +534,18 @@ function parseTernaryValue(value, vars) {
 }
 /**
  * Parse a ternary expression and find the colon that separates true/false values
- * Handles nested quotes properly
+ * Handles nested quotes properly (including HTML-encoded quotes)
  */
 function splitTernary(expr) {
+    // First decode HTML entities to normalize the expression
+    const decodedExpr = decodeHtmlEntities(expr);
     // Find the ? that starts the ternary
     let questionIdx = -1;
     let inQuote = false;
     let quoteChar = "";
-    for (let i = 0; i < expr.length; i++) {
-        const char = expr[i];
-        const prevChar = i > 0 ? expr[i - 1] : "";
+    for (let i = 0; i < decodedExpr.length; i++) {
+        const char = decodedExpr[i];
+        const prevChar = i > 0 ? decodedExpr[i - 1] : "";
         if ((char === '"' || char === "'") && prevChar !== "\\") {
             if (!inQuote) {
                 inQuote = true;
@@ -542,8 +562,8 @@ function splitTernary(expr) {
     }
     if (questionIdx === -1)
         return null;
-    const condition = expr.slice(0, questionIdx).trim();
-    const rest = expr.slice(questionIdx + 1);
+    const condition = decodedExpr.slice(0, questionIdx).trim();
+    const rest = decodedExpr.slice(questionIdx + 1);
     // Find the : that separates true/false values
     let colonIdx = -1;
     inQuote = false;
