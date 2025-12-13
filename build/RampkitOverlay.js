@@ -425,8 +425,169 @@ function preloadRampkitOverlay(opts) {
     }
 }
 /**
+ * Evaluate a comparison condition against variables
+ * Supports: ==, !=, >, <, >=, <=, and truthy checks
+ */
+function evaluateCondition(condition, vars) {
+    condition = condition.trim();
+    // Match comparison operators: ==, !=, >=, <=, >, <
+    const comparisonMatch = condition.match(/^([A-Za-z_][A-Za-z0-9_.]*)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+    if (comparisonMatch) {
+        const [, varName, operator, rawRight] = comparisonMatch;
+        const leftValue = vars.hasOwnProperty(varName) ? vars[varName] : undefined;
+        let rightValue = rawRight.trim();
+        // Parse right side - could be a quoted string or a number or a variable
+        if ((rightValue.startsWith('"') && rightValue.endsWith('"')) ||
+            (rightValue.startsWith("'") && rightValue.endsWith("'"))) {
+            // Quoted string literal
+            rightValue = rightValue.slice(1, -1);
+        }
+        else if (!isNaN(Number(rightValue))) {
+            // Numeric literal
+            rightValue = Number(rightValue);
+        }
+        else if (rightValue === "true") {
+            rightValue = true;
+        }
+        else if (rightValue === "false") {
+            rightValue = false;
+        }
+        else if (rightValue === "null") {
+            rightValue = null;
+        }
+        else if (vars.hasOwnProperty(rightValue)) {
+            // Variable reference
+            rightValue = vars[rightValue];
+        }
+        // Perform comparison
+        switch (operator) {
+            case "==":
+                return leftValue == rightValue;
+            case "!=":
+                return leftValue != rightValue;
+            case ">":
+                return Number(leftValue) > Number(rightValue);
+            case "<":
+                return Number(leftValue) < Number(rightValue);
+            case ">=":
+                return Number(leftValue) >= Number(rightValue);
+            case "<=":
+                return Number(leftValue) <= Number(rightValue);
+            default:
+                return false;
+        }
+    }
+    // Truthy check - just the variable name
+    const varName = condition.trim();
+    if (vars.hasOwnProperty(varName)) {
+        const value = vars[varName];
+        // Consider empty string as falsy
+        if (value === "")
+            return false;
+        return !!value;
+    }
+    // Unknown variable - treat as falsy
+    return false;
+}
+/**
+ * Parse a ternary value (the part after ? or after :)
+ * Returns the resolved value, handling both quoted strings and variable references
+ */
+function parseTernaryValue(value, vars) {
+    value = value.trim();
+    // Check if it's a quoted string
+    if ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))) {
+        return value.slice(1, -1);
+    }
+    // Otherwise treat as a variable reference
+    if (vars.hasOwnProperty(value)) {
+        const varValue = vars[value];
+        if (varValue === undefined || varValue === null)
+            return "";
+        if (typeof varValue === "boolean")
+            return varValue ? "true" : "false";
+        if (typeof varValue === "object")
+            return JSON.stringify(varValue);
+        return String(varValue);
+    }
+    // Return as-is if not found (could be a literal like a number)
+    return value;
+}
+/**
+ * Parse a ternary expression and find the colon that separates true/false values
+ * Handles nested quotes properly
+ */
+function splitTernary(expr) {
+    // Find the ? that starts the ternary
+    let questionIdx = -1;
+    let inQuote = false;
+    let quoteChar = "";
+    for (let i = 0; i < expr.length; i++) {
+        const char = expr[i];
+        const prevChar = i > 0 ? expr[i - 1] : "";
+        if ((char === '"' || char === "'") && prevChar !== "\\") {
+            if (!inQuote) {
+                inQuote = true;
+                quoteChar = char;
+            }
+            else if (char === quoteChar) {
+                inQuote = false;
+            }
+        }
+        if (!inQuote && char === "?") {
+            questionIdx = i;
+            break;
+        }
+    }
+    if (questionIdx === -1)
+        return null;
+    const condition = expr.slice(0, questionIdx).trim();
+    const rest = expr.slice(questionIdx + 1);
+    // Find the : that separates true/false values
+    let colonIdx = -1;
+    inQuote = false;
+    quoteChar = "";
+    for (let i = 0; i < rest.length; i++) {
+        const char = rest[i];
+        const prevChar = i > 0 ? rest[i - 1] : "";
+        if ((char === '"' || char === "'") && prevChar !== "\\") {
+            if (!inQuote) {
+                inQuote = true;
+                quoteChar = char;
+            }
+            else if (char === quoteChar) {
+                inQuote = false;
+            }
+        }
+        if (!inQuote && char === ":") {
+            colonIdx = i;
+            break;
+        }
+    }
+    if (colonIdx === -1)
+        return null;
+    const trueValue = rest.slice(0, colonIdx).trim();
+    const falseValue = rest.slice(colonIdx + 1).trim();
+    return { condition, trueValue, falseValue };
+}
+/**
  * Resolve device/user templates in a string
- * Replaces ${device.xxx} and ${user.xxx} with actual values from context
+ * Supports both simple variables ${varName} and conditional ternary expressions
+ * ${condition ? "trueValue" : "falseValue"}
+ *
+ * Supported operators in conditions:
+ * - == (equals)
+ * - != (not equals)
+ * - > (greater than)
+ * - < (less than)
+ * - >= (greater or equal)
+ * - <= (less or equal)
+ * - Truthy check (just variable name)
+ *
+ * Values can be:
+ * - Quoted strings: "hello" or 'hello'
+ * - Variable references: username
  */
 function resolveContextTemplates(text, context) {
     if (!text || !text.includes("${"))
@@ -446,8 +607,23 @@ function resolveContextTemplates(text, context) {
         });
     }
     console.log("[RampKit] Resolving templates with vars:", JSON.stringify(vars));
-    // Replace ${varName} patterns
-    return text.replace(/\$\{([A-Za-z_][A-Za-z0-9_.]*)\}/g, (match, varName) => {
+    // Match ${...} expressions - use a more permissive regex to capture full expressions
+    // including ternary operators with quotes
+    return text.replace(/\$\{([^}]+)\}/g, (match, innerExpr) => {
+        const expr = innerExpr.trim();
+        // Check if this is a ternary expression
+        const ternary = splitTernary(expr);
+        if (ternary) {
+            const { condition, trueValue, falseValue } = ternary;
+            const result = evaluateCondition(condition, vars);
+            const value = result
+                ? parseTernaryValue(trueValue, vars)
+                : parseTernaryValue(falseValue, vars);
+            console.log(`[RampKit] Ternary: ${condition} ? ${trueValue} : ${falseValue} => ${result} => "${value}"`);
+            return value;
+        }
+        // Simple variable substitution
+        const varName = expr;
         if (vars.hasOwnProperty(varName)) {
             const value = vars[varName];
             console.log(`[RampKit] Replacing ${match} with:`, value);
