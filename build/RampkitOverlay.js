@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.injectedButtonAnimations = exports.injectedVarsHandler = exports.injectedNoSelect = exports.injectedHardening = void 0;
+exports.injectedButtonAnimations = exports.injectedDynamicTapHandler = exports.injectedVarsHandler = exports.injectedNoSelect = exports.injectedHardening = void 0;
 exports.showRampkitOverlay = showRampkitOverlay;
 exports.hideRampkitOverlay = hideRampkitOverlay;
 exports.closeRampkitOverlay = closeRampkitOverlay;
@@ -171,6 +171,201 @@ exports.injectedVarsHandler = `
     }, false);
   } catch (_) {}
   true;
+})();
+`;
+// Dynamic tap behavior handler - intercepts clicks and evaluates conditions
+// Must run BEFORE content loads to capture all clicks
+exports.injectedDynamicTapHandler = `
+(function() {
+    if (window.__rampkitClickInterceptorInstalled) return;
+    window.__rampkitClickInterceptorInstalled = true;
+    
+    // Decode HTML entities
+    function decodeHtml(str) {
+        if (!str) return str;
+        return str.replace(/&quot;/g, '"').replace(/&#34;/g, '"').replace(/&#x22;/g, '"')
+                  .replace(/&apos;/g, "'").replace(/&#39;/g, "'").replace(/&#x27;/g, "'")
+                  .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    }
+    
+    // Find dynamic tap config on element or ancestors
+    function findDynamicTap(el) {
+        var current = el;
+        var depth = 0;
+        var attrNames = ['data-tap-dynamic', 'data-tapdynamic', 'tapDynamic', 'data-dynamic-tap'];
+        while (current && current !== document.body && current !== document.documentElement && depth < 20) {
+            if (current.getAttribute) {
+                for (var i = 0; i < attrNames.length; i++) {
+                    var attr = current.getAttribute(attrNames[i]);
+                    if (attr && attr.length > 2) {
+                        return { element: current, config: attr };
+                    }
+                }
+                if (current.dataset && current.dataset.tapDynamic) {
+                    return { element: current, config: current.dataset.tapDynamic };
+                }
+            }
+            current = current.parentElement;
+            depth++;
+        }
+        return null;
+    }
+    
+    // Get variables for condition evaluation - check ALL possible sources
+    function getVars() {
+        var vars = {};
+        if (window.__rampkitVariables) {
+            Object.keys(window.__rampkitVariables).forEach(function(k) {
+                vars[k] = window.__rampkitVariables[k];
+            });
+        }
+        if (window.__rampkitVars) {
+            Object.keys(window.__rampkitVars).forEach(function(k) {
+                vars[k] = window.__rampkitVars[k];
+            });
+        }
+        if (window.RK_VARS) {
+            Object.keys(window.RK_VARS).forEach(function(k) {
+                vars[k] = window.RK_VARS[k];
+            });
+        }
+        return vars;
+    }
+    
+    // Evaluate a single rule
+    function evalRule(rule, vars) {
+        if (!rule || !rule.key) return false;
+        var left = vars[rule.key];
+        var right = rule.value;
+        var op = rule.op || '=';
+        if (left === undefined || left === null) left = '';
+        if (right === undefined || right === null) right = '';
+        var leftStr = String(left);
+        var rightStr = String(right);
+        var result = false;
+        switch (op) {
+            case '=': case '==': result = leftStr === rightStr; break;
+            case '!=': case '<>': result = leftStr !== rightStr; break;
+            case '>': result = parseFloat(left) > parseFloat(right); break;
+            case '<': result = parseFloat(left) < parseFloat(right); break;
+            case '>=': result = parseFloat(left) >= parseFloat(right); break;
+            case '<=': result = parseFloat(left) <= parseFloat(right); break;
+            default: result = false;
+        }
+        return result;
+    }
+    
+    // Evaluate all rules (AND logic)
+    function evalRules(rules, vars) {
+        if (!rules || !rules.length) return true;
+        for (var i = 0; i < rules.length; i++) {
+            if (!evalRule(rules[i], vars)) return false;
+        }
+        return true;
+    }
+    
+    // Execute an action
+    function execAction(action) {
+        if (!action || !action.type) return;
+        var msg = null;
+        var actionType = action.type.toLowerCase();
+        
+        switch (actionType) {
+            case 'navigate':
+                msg = { type: 'rampkit:navigate', targetScreenId: action.targetScreenId || '__continue__', animation: action.animation || 'fade' };
+                break;
+            case 'continue':
+                msg = { type: 'rampkit:navigate', targetScreenId: '__continue__', animation: action.animation || 'fade' };
+                break;
+            case 'goback':
+                msg = { type: 'rampkit:goBack', animation: action.animation || 'fade' };
+                break;
+            case 'close':
+                msg = { type: 'rampkit:close' };
+                break;
+            case 'haptic':
+                msg = { type: 'rampkit:haptic', hapticType: action.hapticType || 'impact', impactStyle: action.impactStyle || 'Medium', notificationType: action.notificationType };
+                break;
+            case 'showpaywall':
+                msg = { type: 'rampkit:show-paywall', payload: action.payload || { paywallId: action.paywallId } };
+                break;
+            case 'requestreview':
+                msg = { type: 'rampkit:request-review' };
+                break;
+            case 'requestnotificationpermission':
+                msg = { type: 'rampkit:request-notification-permission' };
+                break;
+            case 'onboardingfinished':
+                msg = { type: 'rampkit:onboarding-finished', payload: action.payload };
+                break;
+            case 'setvariable':
+            case 'setstate':
+            case 'updatevariable':
+            case 'set':
+            case 'assign':
+                var varKey = action.key || action.variableName || action.name || action.variable;
+                var varValue = action.variableValue !== undefined ? action.variableValue :
+                               action.value !== undefined ? action.value :
+                               action.newValue !== undefined ? action.newValue : undefined;
+                if (varKey && varValue !== undefined) {
+                    if (window.__rampkitVariables) window.__rampkitVariables[varKey] = varValue;
+                    if (window.__rampkitVars) window.__rampkitVars[varKey] = varValue;
+                    var updateVars = {};
+                    updateVars[varKey] = varValue;
+                    msg = { type: 'rampkit:variables', vars: updateVars };
+                }
+                break;
+        }
+        if (msg) {
+            try {
+                if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify(msg));
+                }
+            } catch(e) {}
+        }
+    }
+    
+    // Evaluate dynamic tap config
+    function evalDynamicTap(config) {
+        if (!config || !config.values) return false;
+        var vars = getVars();
+        var conditions = config.values;
+        for (var i = 0; i < conditions.length; i++) {
+            var cond = conditions[i];
+            var condType = cond.conditionType || 'if';
+            var rules = cond.rules || [];
+            var actions = cond.actions || [];
+            if (condType === 'else' || evalRules(rules, vars)) {
+                for (var j = 0; j < actions.length; j++) {
+                    execAction(actions[j]);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Click interceptor - capture phase, runs BEFORE onclick handlers
+    function interceptClick(event) {
+        var result = findDynamicTap(event.target);
+        if (!result) return;
+        
+        try {
+            var configStr = decodeHtml(result.config);
+            var config = JSON.parse(configStr);
+            var handled = evalDynamicTap(config);
+            if (handled) {
+                event.stopImmediatePropagation();
+                event.preventDefault();
+                return false;
+            }
+        } catch (e) {
+            console.log('[RampKit] Dynamic tap error:', e);
+        }
+    }
+    
+    // Install interceptor on window in capture phase
+    window.addEventListener('click', interceptClick, true);
 })();
 `;
 // Button tap animation script - handles spring animations for interactive elements
@@ -319,7 +514,7 @@ exports.injectedButtonAnimations = `
 })();
 `;
 function performRampkitHaptic(event) {
-    if (!event || event.action !== "haptic") {
+    if (!event) {
         // Backwards compatible default
         try {
             RampKitNative_1.Haptics.impactAsync("medium").catch(() => { });
@@ -327,7 +522,8 @@ function performRampkitHaptic(event) {
         catch (_) { }
         return;
     }
-    const hapticType = event.hapticType;
+    // Accept messages with action: "haptic" OR just type: "rampkit:haptic"
+    const hapticType = event.hapticType || "impact";
     try {
         if (hapticType === "impact") {
             const styleMap = {
@@ -1210,7 +1406,7 @@ function Overlay(props) {
                         opacity: pagerOpacity,
                         transform: [{ translateX: pagerTranslateX }],
                     },
-                ], children: (0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening + exports.injectedButtonAnimations, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedButtonAnimations, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
+                ], children: (0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening + exports.injectedDynamicTapHandler + exports.injectedButtonAnimations, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedButtonAnimations, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
                                 setLoadedCount((c) => c + 1);
                                 if (i === 0) {
                                     setFirstPageLoaded(true);
@@ -1284,6 +1480,9 @@ function Overlay(props) {
                                             // This prevents echo loops and matches iOS SDK behavior
                                             broadcastVars(i);
                                         }
+                                        // CRITICAL: Also send merged vars BACK to source page
+                                        // This ensures window.__rampkitVariables is updated for dynamic tap evaluation
+                                        sendVarsToWebView(i);
                                         return;
                                     }
                                     // 2) A page asked for current vars → send only to that page
