@@ -1219,6 +1219,7 @@ function Overlay(props) {
             // This ensures the webview receives the latest state
             requestAnimationFrame(() => {
                 sendVarsToWebView(nextIndex);
+                sendOnboardingStateToWebView(nextIndex);
             });
             return;
         }
@@ -1267,8 +1268,9 @@ function Overlay(props) {
                         useNativeDriver: true,
                     }),
                 ]).start(() => {
-                    // Send vars to the new page
+                    // Send vars and onboarding state to the new page
                     sendVarsToWebView(nextIndex);
+                    sendOnboardingStateToWebView(nextIndex);
                     setIsTransitioning(false);
                 });
             });
@@ -1287,10 +1289,11 @@ function Overlay(props) {
             // @ts-ignore: method exists on PagerView instance
             (_c = (_b = (_a = pagerRef.current) === null || _a === void 0 ? void 0 : _a.setPageWithoutAnimation) === null || _b === void 0 ? void 0 : _b.call(_a, nextIndex)) !== null && _c !== void 0 ? _c : (_d = pagerRef.current) === null || _d === void 0 ? void 0 : _d.setPage(nextIndex);
             requestAnimationFrame(() => {
-                // Explicitly send vars to the new page after the page switch completes
+                // Explicitly send vars and onboarding state to the new page after the page switch completes
                 // This ensures the webview receives the latest state even if onPageSelected
                 // timing was off during the transition
                 sendVarsToWebView(nextIndex);
+                sendOnboardingStateToWebView(nextIndex);
                 react_native_1.Animated.timing(fadeOpacity, {
                     toValue: 0,
                     duration: 160,
@@ -1408,8 +1411,9 @@ function Overlay(props) {
         // This is more reliable as it doesn't depend on event listeners being set up
         // @ts-ignore: injectJavaScript exists on WebView instance
         wv.injectJavaScript(buildDirectVarsScript(varsRef.current));
-        // Also send onboarding state so templates like ${onboarding.progress} are resolved
-        sendOnboardingStateToWebView(i);
+        // NOTE: Do NOT call sendOnboardingStateToWebView here - it would cause infinite loops
+        // because the WebView echoes back variables which triggers another sendVarsToWebView.
+        // Onboarding state is sent separately in onLoadEnd and onPageSelected.
     }
     /**
      * Broadcast variables to all WebViews, optionally excluding one.
@@ -1491,6 +1495,8 @@ function Overlay(props) {
         // so we retry a few times.
         requestAnimationFrame(() => {
             sendVarsToWebView(pos);
+            // Send onboarding state once after vars
+            sendOnboardingStateToWebView(pos);
         });
         // Retry after a short delay in case the first send didn't work
         setTimeout(() => {
@@ -1639,6 +1645,8 @@ function Overlay(props) {
                                 if (__DEV__)
                                     console.log("[Rampkit] onLoadEnd init send vars", i);
                                 sendVarsToWebView(i, true);
+                                // Send onboarding state on initial load (separate from vars to avoid loops)
+                                sendOnboardingStateToWebView(i);
                             }, onMessage: (ev) => {
                                 var _a, _b, _c, _d;
                                 const raw = ev.nativeEvent.data;
