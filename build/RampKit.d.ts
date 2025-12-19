@@ -68,7 +68,8 @@ export declare class RampKitCore {
      */
     trackCtaTap(buttonId: string, buttonText?: string): void;
     /**
-     * Cleanup SDK resources
+     * Reset the SDK state and re-initialize
+     * Call this when a user logs out or when you need to clear all cached state
      */
-    cleanup(): Promise<void>;
+    reset(): Promise<void>;
 }

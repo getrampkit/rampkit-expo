@@ -458,63 +458,86 @@ public class RampKitModule: Module {
   @available(iOS 15.0, *)
   private func handleTransaction(_ transaction: Transaction) async {
     guard let appId = self.appId, let userId = self.userId else { return }
-    
-    // Determine event type based on transaction
+
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+    // Determine event type based on transaction (matching iOS SDK logic)
     let eventName: String
     var properties: [String: Any] = [:]
-    
-    switch transaction.revocationReason {
-    case .some(let reason):
-      eventName = "purchase_refunded"
-      properties["revocationReason"] = reason == .developerIssue ? "developer_issue" : "other"
-    case .none:
-      if transaction.isUpgraded {
-        eventName = "subscription_upgraded"
-      } else {
-        // Determine event based on product type
-        let productType = transaction.productType
-        if productType == .autoRenewable {
-          if transaction.originalID == transaction.id {
-            eventName = "purchase_completed"
-          } else {
-            eventName = "subscription_renewed"
-          }
-        } else {
-          eventName = "purchase_completed"
-        }
+
+    // Check revocation first (subscription_canceled)
+    if transaction.revocationDate != nil {
+      eventName = "subscription_canceled"
+      if let reason = transaction.revocationReason {
+        properties["revocationReason"] = reason == .developerIssue ? "developerIssue" : "other"
       }
+      properties["revocationDate"] = transaction.revocationDate.map { formatter.string(from: $0) }
     }
-    
-    // Build properties
+    // Check if this is a renewal (originalID != id)
+    else if transaction.originalID != transaction.id {
+      eventName = "subscription_renewed"
+    }
+    // Check if it's a trial or intro offer
+    else if let offerType = transaction.offerType, offerType == .introductory {
+      eventName = "trial_started"
+    }
+    // Default to purchase_completed
+    else {
+      eventName = "purchase_completed"
+    }
+
+    // Build properties (matching iOS SDK PurchaseEventDetails)
     properties["productId"] = transaction.productID
     properties["transactionId"] = String(transaction.id)
     properties["originalTransactionId"] = String(transaction.originalID)
-    properties["purchaseDate"] = ISO8601DateFormatter().string(from: transaction.purchaseDate)
-    
-    if let expirationDate = transaction.expirationDate {
-      properties["expirationDate"] = ISO8601DateFormatter().string(from: expirationDate)
-    }
-    
+    properties["purchaseDate"] = formatter.string(from: transaction.purchaseDate)
     properties["quantity"] = transaction.purchasedQuantity
     properties["productType"] = mapProductType(transaction.productType)
-    
-    // environment property is only available in iOS 16.0+
-    if #available(iOS 16.0, *) {
-      properties["environment"] = transaction.environment.rawValue
+
+    // Expiration date
+    if let expirationDate = transaction.expirationDate {
+      properties["expirationDate"] = formatter.string(from: expirationDate)
     }
-    
+
+    // Trial/intro offer detection
+    if let offerType = transaction.offerType {
+      properties["isTrial"] = offerType == .introductory
+      properties["isIntroOffer"] = offerType == .introductory
+      properties["offerType"] = formatOfferType(offerType)
+    }
+
+    // Offer ID
+    if let offerId = transaction.offerID {
+      properties["offerId"] = offerId
+    }
+
+    // Storefront country
+    properties["storefront"] = transaction.storefrontCountryCode
+
+    // Web order line item ID
     if let webOrderLineItemID = transaction.webOrderLineItemID {
       properties["webOrderLineItemId"] = webOrderLineItemID
     }
-    
+
+    // Environment (iOS 16+)
+    if #available(iOS 16.0, *) {
+      properties["environment"] = transaction.environment.rawValue
+    }
+
     // Get price info from product if available
     if let product = await getProduct(for: transaction.productID) {
-      properties["price"] = product.price
+      properties["amount"] = product.price
       properties["currency"] = product.priceFormatStyle.currencyCode
-      properties["localizedPrice"] = product.displayPrice
-      properties["localizedName"] = product.displayName
+      properties["priceFormatted"] = product.displayPrice
+
+      // Subscription-specific info
+      if let subscription = product.subscription {
+        properties["subscriptionPeriod"] = formatSubscriptionPeriod(subscription.subscriptionPeriod)
+        properties["subscriptionGroupId"] = subscription.subscriptionGroupID
+      }
     }
-    
+
     // Send event to backend
     await sendPurchaseEvent(
       appId: appId,
@@ -522,6 +545,36 @@ public class RampKitModule: Module {
       eventName: eventName,
       properties: properties
     )
+  }
+
+  @available(iOS 15.0, *)
+  private func formatOfferType(_ offerType: Transaction.OfferType) -> String {
+    if offerType == .introductory {
+      return "introductory"
+    } else if offerType == .promotional {
+      return "promotional"
+    } else if offerType == .code {
+      return "code"
+    } else {
+      return "unknown"
+    }
+  }
+
+  @available(iOS 15.0, *)
+  private func formatSubscriptionPeriod(_ period: Product.SubscriptionPeriod) -> String {
+    // ISO 8601 duration format
+    let unit = period.unit
+    if unit == .day {
+      return "P\(period.value)D"
+    } else if unit == .week {
+      return "P\(period.value)W"
+    } else if unit == .month {
+      return "P\(period.value)M"
+    } else if unit == .year {
+      return "P\(period.value)Y"
+    } else {
+      return "P\(period.value)D"
+    }
   }
   
   @available(iOS 15.0, *)

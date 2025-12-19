@@ -348,3 +348,30 @@ export interface RampKitContext {
   user: RampKitUserContext;
 }
 
+// ============================================================================
+// Navigation Data (for resolving __continue__/__goBack__ based on spatial layout)
+// ============================================================================
+
+/**
+ * Navigation data structure from the editor's spatial layout
+ * This is exported alongside screens to enable proper navigation resolution
+ */
+export interface NavigationData {
+  /** Ordered array of screen IDs in the main flow (sorted by X position, main row only) */
+  mainFlow: string[];
+  /** Map of screen ID to position information */
+  screenPositions?: Record<string, ScreenPosition>;
+}
+
+/**
+ * Position information for a screen in the editor canvas
+ */
+export interface ScreenPosition {
+  /** X coordinate in the editor canvas */
+  x: number;
+  /** Y coordinate in the editor canvas */
+  y: number;
+  /** Row classification: "main" for main row screens, "variant" for screens below */
+  row: "main" | "variant";
+}
+

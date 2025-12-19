@@ -42,6 +42,7 @@ class RampKitModule : Module(), PurchasesUpdatedListener {
   private val INSTALL_DATE_KEY = "rk_install_date"
   private val LAUNCH_COUNT_KEY = "rk_launch_count"
   private val LAST_LAUNCH_KEY = "rk_last_launch"
+  private val ORIGINAL_TXN_PREFIX = "rk_orig_txn_"
 
   private var billingClient: BillingClient? = null
   private var appId: String? = null
@@ -247,7 +248,7 @@ class RampKitModule : Module(), PurchasesUpdatedListener {
           val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
             .setPurchaseToken(purchase.purchaseToken)
             .build()
-          
+
           billingClient?.acknowledgePurchase(acknowledgePurchaseParams) { result ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
               Log.d(TAG, "Purchase acknowledged")
@@ -257,59 +258,129 @@ class RampKitModule : Module(), PurchasesUpdatedListener {
 
         // Get product details for price info
         coroutineScope.launch {
-          val productDetails = getProductDetails(purchase.products.firstOrNull() ?: "")
-          
+          val productId = purchase.products.firstOrNull() ?: ""
+          val productDetails = getProductDetails(productId)
+
+          // Determine originalTransactionId for subscription tracking
+          // For Android, we store the first orderId for each product as the "original"
+          val originalTransactionId = getOrStoreOriginalTransactionId(productId, purchase.orderId)
+          val isRenewal = originalTransactionId != purchase.orderId
+
+          // Determine event type (matching iOS SDK logic)
+          val eventName: String
+          val isTrial: Boolean
+          val isIntroOffer: Boolean
+
+          // Check for free trial or intro offer
+          val subscriptionOffer = productDetails?.subscriptionOfferDetails?.firstOrNull()
+          val firstPricingPhase = subscriptionOffer?.pricingPhases?.pricingPhaseList?.firstOrNull()
+          val hasFreeTrial = firstPricingPhase?.priceAmountMicros == 0L
+
+          when {
+            // Subscription renewal
+            isRenewal && purchase.isAutoRenewing -> {
+              eventName = "subscription_renewed"
+              isTrial = false
+              isIntroOffer = false
+            }
+            // Trial started (free trial)
+            hasFreeTrial && !isRenewal -> {
+              eventName = "trial_started"
+              isTrial = true
+              isIntroOffer = true
+            }
+            // Regular purchase
+            else -> {
+              eventName = "purchase_completed"
+              isTrial = false
+              isIntroOffer = false
+            }
+          }
+
           val properties = mutableMapOf<String, Any?>(
-            "productId" to purchase.products.firstOrNull(),
+            "productId" to productId,
             "transactionId" to purchase.orderId,
-            "originalTransactionId" to purchase.orderId,
+            "originalTransactionId" to originalTransactionId,
             "purchaseToken" to purchase.purchaseToken,
             "purchaseDate" to getIso8601Timestamp(purchase.purchaseTime),
             "quantity" to purchase.quantity,
-            "isAutoRenewing" to purchase.isAutoRenewing
+            "isAutoRenewing" to purchase.isAutoRenewing,
+            "isTrial" to isTrial,
+            "isIntroOffer" to isIntroOffer
           )
 
           productDetails?.let { details ->
-            val pricingPhase = details.subscriptionOfferDetails?.firstOrNull()?.pricingPhases?.pricingPhaseList?.firstOrNull()
-              ?: details.oneTimePurchaseOfferDetails?.let { oneTime ->
-                object {
-                  val priceAmountMicros = oneTime.priceAmountMicros
-                  val priceCurrencyCode = oneTime.priceCurrencyCode
-                  val formattedPrice = oneTime.formattedPrice
-                }
+            properties["productType"] = if (details.productType == BillingClient.ProductType.SUBS) "auto_renewable" else "non_consumable"
+
+            // Get pricing info
+            val oneTimePurchase = details.oneTimePurchaseOfferDetails
+            val subscriptionOfferDetails = details.subscriptionOfferDetails?.firstOrNull()
+
+            if (oneTimePurchase != null) {
+              properties["amount"] = oneTimePurchase.priceAmountMicros / 1_000_000.0
+              properties["currency"] = oneTimePurchase.priceCurrencyCode
+              properties["priceFormatted"] = oneTimePurchase.formattedPrice
+            } else if (subscriptionOfferDetails != null) {
+              // For subscriptions, get the base pricing phase (not the free trial phase)
+              val basePricingPhase = subscriptionOfferDetails.pricingPhases.pricingPhaseList
+                .firstOrNull { it.priceAmountMicros > 0 }
+                ?: subscriptionOfferDetails.pricingPhases.pricingPhaseList.lastOrNull()
+
+              basePricingPhase?.let { phase ->
+                properties["amount"] = phase.priceAmountMicros / 1_000_000.0
+                properties["currency"] = phase.priceCurrencyCode
+                properties["priceFormatted"] = phase.formattedPrice
+                properties["subscriptionPeriod"] = formatBillingPeriod(phase.billingPeriod)
               }
 
-            if (pricingPhase != null) {
-              properties["price"] = when (pricingPhase) {
-                is ProductDetails.PricingPhase -> pricingPhase.priceAmountMicros / 1_000_000.0
-                else -> (pricingPhase as? Any)?.let { 
-                  (it.javaClass.getMethod("getPriceAmountMicros").invoke(it) as Long) / 1_000_000.0 
-                }
-              }
-              properties["currency"] = when (pricingPhase) {
-                is ProductDetails.PricingPhase -> pricingPhase.priceCurrencyCode
-                else -> (pricingPhase as? Any)?.let {
-                  it.javaClass.getMethod("getPriceCurrencyCode").invoke(it) as String
-                }
-              }
-              properties["localizedPrice"] = when (pricingPhase) {
-                is ProductDetails.PricingPhase -> pricingPhase.formattedPrice
-                else -> (pricingPhase as? Any)?.let {
-                  it.javaClass.getMethod("getFormattedPrice").invoke(it) as String
-                }
+              // Offer type detection
+              val freeTrialPhase = subscriptionOfferDetails.pricingPhases.pricingPhaseList
+                .firstOrNull { it.priceAmountMicros == 0L }
+              if (freeTrialPhase != null) {
+                properties["offerType"] = "introductory"
               }
             }
+
             properties["localizedName"] = details.name
-            properties["productType"] = details.productType
           }
 
-          sendPurchaseEvent(appId, userId, "purchase_completed", properties)
+          sendPurchaseEvent(appId, userId, eventName, properties)
         }
       }
       Purchase.PurchaseState.PENDING -> {
         Log.d(TAG, "Purchase pending: ${purchase.products}")
       }
     }
+  }
+
+  /**
+   * Get or store the original transaction ID for a product.
+   * This enables subscription renewal tracking by comparing subsequent orderIds
+   * to the original orderId for the same product.
+   */
+  private fun getOrStoreOriginalTransactionId(productId: String, currentOrderId: String?): String? {
+    if (currentOrderId == null) return null
+
+    val key = ORIGINAL_TXN_PREFIX + productId
+    val storedOriginal = prefs.getString(key, null)
+
+    return if (storedOriginal != null) {
+      // Return the stored original
+      storedOriginal
+    } else {
+      // This is the first purchase for this product, store it as original
+      prefs.edit().putString(key, currentOrderId).apply()
+      currentOrderId
+    }
+  }
+
+  /**
+   * Format Google Play billing period to ISO 8601 duration format
+   * Input format: P1W, P1M, P3M, P6M, P1Y
+   */
+  private fun formatBillingPeriod(billingPeriod: String): String {
+    // Google Play already uses ISO 8601 format, just return it
+    return billingPeriod
   }
 
   private suspend fun getProductDetails(productId: String): ProductDetails? {

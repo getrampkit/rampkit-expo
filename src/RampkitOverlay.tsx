@@ -6,7 +6,7 @@ import PagerView, {
 } from "react-native-pager-view";
 import { WebView } from "react-native-webview";
 import { Haptics, StoreReview, Notifications } from "./RampKitNative";
-import { RampKitContext } from "./types";
+import { RampKitContext, NavigationData } from "./types";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -560,6 +560,7 @@ export function showRampkitOverlay(opts: {
   variables?: Record<string, any>;
   requiredScripts?: string[];
   rampkitContext?: RampKitContext;
+  navigation?: NavigationData;
   onClose?: () => void;
   onOnboardingFinished?: (payload?: any) => void;
   onShowPaywall?: (payload?: any) => void;
@@ -581,6 +582,7 @@ export function showRampkitOverlay(opts: {
         variables={opts.variables}
         requiredScripts={opts.requiredScripts}
         rampkitContext={opts.rampkitContext}
+        navigation={opts.navigation}
         prebuiltDocs={prebuiltDocs}
         onRequestClose={() => {
           activeCloseHandler = null;
@@ -1112,6 +1114,7 @@ function Overlay(props: {
   variables?: Record<string, any>;
   requiredScripts?: string[];
   rampkitContext?: RampKitContext;
+  navigation?: NavigationData;
   prebuiltDocs?: string[];
   onRequestClose: () => void;
   onOnboardingFinished?: (payload?: any) => void;
@@ -1149,6 +1152,149 @@ function Overlay(props: {
   const lastVarsSendTimeRef = useRef([] as number[]);
   // Stale value window in milliseconds - matches iOS SDK (600ms)
   const STALE_VALUE_WINDOW_MS = 600;
+
+  // ============================================================================
+  // Navigation Resolution Helpers (matches iOS SDK behavior)
+  // ============================================================================
+
+  /**
+   * Resolve `__continue__` to the actual target screen ID using navigation data
+   * @param fromScreenId - The current screen ID
+   * @returns The target screen ID, or null if at the end of the flow or should use fallback
+   */
+  const resolveContinue = (fromScreenId: string): string | null => {
+    const navigation = props.navigation;
+    
+    // If no navigation data, fall back to array order
+    if (!navigation?.mainFlow || navigation.mainFlow.length === 0) {
+      console.log("[RampKit] 🧭 No navigation.mainFlow, using array order for __continue__");
+      return null; // Will use fallback
+    }
+
+    const { mainFlow, screenPositions } = navigation;
+
+    // Check if current screen is in the main flow
+    const currentFlowIndex = mainFlow.indexOf(fromScreenId);
+    if (currentFlowIndex !== -1) {
+      // Navigate to next screen in main flow
+      const nextFlowIndex = currentFlowIndex + 1;
+      if (nextFlowIndex < mainFlow.length) {
+        const nextScreenId = mainFlow[nextFlowIndex];
+        console.log(`[RampKit] 🧭 __continue__ resolved via mainFlow: ${fromScreenId} → ${nextScreenId} (flow index ${currentFlowIndex} → ${nextFlowIndex})`);
+        return nextScreenId;
+      } else {
+        console.log(`[RampKit] 🧭 __continue__: at end of mainFlow (index ${currentFlowIndex})`);
+        return null;
+      }
+    }
+
+    // Current screen is NOT in mainFlow (it's a variant screen)
+    // Find the appropriate next main screen based on X position
+    if (screenPositions) {
+      const currentPosition = screenPositions[fromScreenId];
+      if (currentPosition) {
+        console.log(`[RampKit] 🧭 Current screen '${fromScreenId}' is a variant (row: ${currentPosition.row}, x: ${currentPosition.x})`);
+
+        // Find the main flow screen that comes AFTER this X position
+        // (the screen with the smallest X that is > currentPosition.x)
+        let bestCandidate: { screenId: string; x: number } | null = null;
+
+        for (const mainScreenId of mainFlow) {
+          const mainPos = screenPositions[mainScreenId];
+          if (mainPos && mainPos.x > currentPosition.x) {
+            if (!bestCandidate || mainPos.x < bestCandidate.x) {
+              bestCandidate = { screenId: mainScreenId, x: mainPos.x };
+            }
+          }
+        }
+
+        if (bestCandidate) {
+          console.log(`[RampKit] 🧭 __continue__ from variant: ${fromScreenId} → ${bestCandidate.screenId} (next main screen at x:${bestCandidate.x})`);
+          return bestCandidate.screenId;
+        } else {
+          console.log("[RampKit] 🧭 __continue__ from variant: no main screen to the right, end of flow");
+          return null;
+        }
+      }
+    }
+
+    // Position data not available for current screen, fall back to array
+    console.log(`[RampKit] 🧭 Screen '${fromScreenId}' not found in positions, using array fallback`);
+    return null;
+  };
+
+  /**
+   * Resolve `__goBack__` to the actual target screen ID using navigation data
+   * @param fromScreenId - The current screen ID
+   * @returns The target screen ID, or null if at the start of the flow or should use fallback
+   */
+  const resolveGoBack = (fromScreenId: string): string | null => {
+    const navigation = props.navigation;
+    
+    // If no navigation data, fall back to array order
+    if (!navigation?.mainFlow || navigation.mainFlow.length === 0) {
+      console.log("[RampKit] 🧭 No navigation.mainFlow, using array order for __goBack__");
+      return null; // Will use fallback
+    }
+
+    const { mainFlow, screenPositions } = navigation;
+
+    // Check if current screen is in the main flow
+    const currentFlowIndex = mainFlow.indexOf(fromScreenId);
+    if (currentFlowIndex !== -1) {
+      // Navigate to previous screen in main flow
+      const prevFlowIndex = currentFlowIndex - 1;
+      if (prevFlowIndex >= 0) {
+        const prevScreenId = mainFlow[prevFlowIndex];
+        console.log(`[RampKit] 🧭 __goBack__ resolved via mainFlow: ${fromScreenId} → ${prevScreenId} (flow index ${currentFlowIndex} → ${prevFlowIndex})`);
+        return prevScreenId;
+      } else {
+        console.log(`[RampKit] 🧭 __goBack__: at start of mainFlow (index ${currentFlowIndex})`);
+        return null;
+      }
+    }
+
+    // Current screen is NOT in mainFlow (it's a variant screen)
+    // Go back to the main flow screen at or before this X position
+    if (screenPositions) {
+      const currentPosition = screenPositions[fromScreenId];
+      if (currentPosition) {
+        console.log(`[RampKit] 🧭 Current screen '${fromScreenId}' is a variant (row: ${currentPosition.row}, x: ${currentPosition.x})`);
+
+        // Find the main flow screen that is at or before this X position
+        // (the screen with the largest X that is <= currentPosition.x)
+        let bestCandidate: { screenId: string; x: number } | null = null;
+
+        for (const mainScreenId of mainFlow) {
+          const mainPos = screenPositions[mainScreenId];
+          if (mainPos && mainPos.x <= currentPosition.x) {
+            if (!bestCandidate || mainPos.x > bestCandidate.x) {
+              bestCandidate = { screenId: mainScreenId, x: mainPos.x };
+            }
+          }
+        }
+
+        if (bestCandidate) {
+          console.log(`[RampKit] 🧭 __goBack__ from variant: ${fromScreenId} → ${bestCandidate.screenId} (main screen at x:${bestCandidate.x})`);
+          return bestCandidate.screenId;
+        } else {
+          console.log("[RampKit] 🧭 __goBack__ from variant: no main screen to the left, start of flow");
+          return null;
+        }
+      }
+    }
+
+    // Position data not available for current screen, fall back to array
+    console.log(`[RampKit] 🧭 Screen '${fromScreenId}' not found in positions, using array fallback`);
+    return null;
+  };
+
+  /**
+   * Get the screen index for a given screen ID
+   */
+  const getScreenIndex = (screenId: string): number => {
+    return props.screens.findIndex((s) => s.id === screenId);
+  };
 
   // Fade-in when overlay becomes visible
   React.useEffect(() => {
@@ -1356,6 +1502,60 @@ function Overlay(props: {
     })();`;
   }
 
+  // Build a script that updates the onboarding state
+  // This calls window.__rampkitUpdateOnboarding(index, screenId) to update
+  // onboarding.currentIndex, onboarding.progress, etc.
+  function buildOnboardingStateScript(screenIndex: number, screenId: string, totalScreens: number): string {
+    return `(function() {
+      try {
+        // Set total screens global
+        window.RK_TOTAL_SCREENS = ${totalScreens};
+        
+        // Call the update function if it exists
+        if (typeof window.__rampkitUpdateOnboarding === 'function') {
+          window.__rampkitUpdateOnboarding(${screenIndex}, '${screenId}');
+          console.log('[RampKit] Called __rampkitUpdateOnboarding(${screenIndex}, ${screenId})');
+        }
+        
+        // Also dispatch a message event for any listeners
+        var payload = {
+          type: 'rampkit:onboarding-state',
+          currentIndex: ${screenIndex},
+          screenId: '${screenId}',
+          totalScreens: ${totalScreens}
+        };
+        
+        try {
+          document.dispatchEvent(new MessageEvent('message', { data: payload }));
+        } catch(e) {}
+        
+        // Also dispatch custom event
+        try {
+          document.dispatchEvent(new CustomEvent('rampkit:onboarding-state', { detail: payload }));
+        } catch(e) {}
+        
+      } catch(e) {
+        console.log('[RampKit] sendOnboardingState error:', e);
+      }
+    })();`;
+  }
+
+  // Send onboarding state to a WebView
+  function sendOnboardingStateToWebView(i: number) {
+    const wv = webviewsRef.current[i];
+    if (!wv) return;
+    
+    const screenId = props.screens[i]?.id || '';
+    const totalScreens = props.screens.length;
+    
+    if (__DEV__) {
+      console.log("[Rampkit] sendOnboardingStateToWebView", i, { screenId, totalScreens });
+    }
+    
+    // @ts-ignore: injectJavaScript exists on WebView instance
+    wv.injectJavaScript(buildOnboardingStateScript(i, screenId, totalScreens));
+  }
+
   function sendVarsToWebView(i: number, isInitialLoad: boolean = false) {
     const wv = webviewsRef.current[i];
     if (!wv) return;
@@ -1367,6 +1567,9 @@ function Overlay(props: {
     // This is more reliable as it doesn't depend on event listeners being set up
     // @ts-ignore: injectJavaScript exists on WebView instance
     wv.injectJavaScript(buildDirectVarsScript(varsRef.current));
+    
+    // Also send onboarding state so templates like ${onboarding.progress} are resolved
+    sendOnboardingStateToWebView(i);
   }
 
   /**
@@ -1473,8 +1676,25 @@ function Overlay(props: {
   };
 
   const handleAdvance = (i: number, animation: string = "fade") => {
+    const currentScreenId = props.screens[i]?.id;
+    
+    // Try to resolve using navigation data
+    if (currentScreenId) {
+      const resolvedId = resolveContinue(currentScreenId);
+      if (resolvedId) {
+        const targetIndex = getScreenIndex(resolvedId);
+        if (targetIndex >= 0 && targetIndex < props.screens.length) {
+          navigateToIndex(targetIndex, animation);
+          Haptics.impactAsync("light").catch(() => {});
+          return;
+        }
+      }
+    }
+    
+    // Fallback to array order
     const last = props.screens.length - 1;
     if (i < last) {
+      console.log(`[RampKit] 🧭 __continue__ fallback to array index ${i + 1}`);
       navigateToIndex(i + 1, animation);
       Haptics.impactAsync("light").catch(() => {});
     } else {
@@ -1482,6 +1702,30 @@ function Overlay(props: {
       setOnboardingCompleted(true);
       Haptics.notificationAsync("success").catch(() => {});
       handleRequestClose({ completed: true });
+    }
+  };
+
+  const handleGoBack = (i: number, animation: string = "fade") => {
+    const currentScreenId = props.screens[i]?.id;
+    
+    // Try to resolve using navigation data
+    if (currentScreenId) {
+      const resolvedId = resolveGoBack(currentScreenId);
+      if (resolvedId) {
+        const targetIndex = getScreenIndex(resolvedId);
+        if (targetIndex >= 0 && targetIndex < props.screens.length) {
+          navigateToIndex(targetIndex, animation);
+          return;
+        }
+      }
+    }
+    
+    // Fallback to array order
+    if (i > 0) {
+      console.log(`[RampKit] 🧭 __goBack__ fallback to array index ${i - 1}`);
+      navigateToIndex(i - 1, animation);
+    } else {
+      handleRequestClose();
     }
   };
 
@@ -1766,11 +2010,7 @@ function Overlay(props: {
                   if (data?.type === "rampkit:navigate") {
                     const target = data?.targetScreenId;
                     if (target === "__goBack__") {
-                      if (i > 0) {
-                        navigateToIndex(i - 1, data?.animation || "fade");
-                      } else {
-                        handleRequestClose();
-                      }
+                      handleGoBack(i, data?.animation || "fade");
                       return;
                     }
                     if (!target || target === "__continue__") {
@@ -1788,11 +2028,7 @@ function Overlay(props: {
                     return;
                   }
                   if (data?.type === "rampkit:goBack") {
-                    if (i > 0) {
-                      navigateToIndex(i - 1, data?.animation || "fade");
-                    } else {
-                      handleRequestClose();
-                    }
+                    handleGoBack(i, data?.animation || "fade");
                     return;
                   }
                   if (data?.type === "rampkit:close") {
@@ -1843,21 +2079,13 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:goBack") {
-                    if (i > 0) {
-                      navigateToIndex(i - 1);
-                    } else {
-                      handleRequestClose();
-                    }
+                    handleGoBack(i);
                     return;
                   }
                   if (raw.startsWith("rampkit:navigate:")) {
                     const target = raw.slice("rampkit:navigate:".length);
                     if (target === "__goBack__") {
-                      if (i > 0) {
-                        navigateToIndex(i - 1);
-                      } else {
-                        handleRequestClose();
-                      }
+                      handleGoBack(i);
                       return;
                     }
                     if (!target || target === "__continue__") {

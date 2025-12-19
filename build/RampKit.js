@@ -209,6 +209,13 @@ class RampKitCore {
             const rampkitContext = this.deviceInfo
                 ? (0, DeviceInfoCollector_1.buildRampKitContext)(this.deviceInfo)
                 : undefined;
+            // Extract navigation data for spatial layout-based navigation
+            const navigation = data.navigation
+                ? {
+                    mainFlow: data.navigation.mainFlow || [],
+                    screenPositions: data.navigation.screenPositions,
+                }
+                : undefined;
             // Track onboarding started event
             const onboardingId = data.onboardingId || data.id || "unknown";
             EventManager_1.eventManager.trackOnboardingStarted(onboardingId, screens.length);
@@ -229,6 +236,7 @@ class RampKitCore {
                 variables,
                 requiredScripts,
                 rampkitContext,
+                navigation,
                 onOnboardingFinished: (payload) => {
                     var _a;
                     // Track onboarding completed
@@ -290,18 +298,34 @@ class RampKitCore {
     // StoreKit 2 (iOS) and Google Play Billing (Android) transaction observers.
     // No manual tracking is needed.
     /**
-     * Cleanup SDK resources
+     * Reset the SDK state and re-initialize
+     * Call this when a user logs out or when you need to clear all cached state
      */
-    async cleanup() {
+    async reset() {
+        if (!this.config) {
+            console.warn("[RampKit] Reset: No config found, cannot re-initialize");
+            return;
+        }
+        console.log("[RampKit] Reset: Clearing SDK state...");
         // Stop transaction observer
         await RampKitNative_1.TransactionObserver.stop();
+        // Remove app state listener
         if (this.appStateSubscription) {
             this.appStateSubscription.remove();
             this.appStateSubscription = null;
         }
+        // Reset event manager state
         EventManager_1.eventManager.reset();
+        // Reset session
         (0, DeviceInfoCollector_1.resetSession)();
+        // Clear local state
+        this.userId = null;
+        this.deviceInfo = null;
+        this.onboardingData = null;
         this.initialized = false;
+        console.log("[RampKit] Reset: Re-initializing SDK...");
+        // Re-initialize with stored config
+        await this.init(this.config);
     }
 }
 exports.RampKitCore = RampKitCore;

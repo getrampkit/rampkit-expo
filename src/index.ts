@@ -43,6 +43,9 @@ export type {
   RampKitContext,
   RampKitDeviceContext,
   RampKitUserContext,
+  // Navigation types for spatial layout-based navigation
+  NavigationData,
+  ScreenPosition,
   // Event property types
   AppSessionStartedProperties,
   AppSessionEndedProperties,
