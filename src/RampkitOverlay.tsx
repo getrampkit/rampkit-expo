@@ -1152,6 +1152,10 @@ function Overlay(props: {
   const lastVarsSendTimeRef = useRef([] as number[]);
   // Stale value window in milliseconds - matches iOS SDK (600ms)
   const STALE_VALUE_WINDOW_MS = 600;
+  // Track which screens have completed initial setup (to avoid repeated onLoadEnd processing)
+  const initializedScreensRef = useRef(new Set<number>());
+  // Track the currently active screen index (matches iOS SDK's activeScreenIndex)
+  const activeScreenIndexRef = useRef(0);
 
   // ============================================================================
   // Navigation Resolution Helpers (matches iOS SDK behavior)
@@ -1354,6 +1358,9 @@ function Overlay(props: {
     // Slide animation: use PagerView's built-in animated page change
     // and skip the fade curtain overlay.
     if (animationType === "slide") {
+      // Update active screen index FIRST
+      activeScreenIndexRef.current = nextIndex;
+      
       // @ts-ignore: methods exist on PagerView instance
       const pager = pagerRef.current as any;
       if (!pager) return;
@@ -1363,7 +1370,6 @@ function Overlay(props: {
         pager.setPageWithoutAnimation(nextIndex);
       }
       // Explicitly send vars to the new page after setting it
-      // This ensures the webview receives the latest state
       requestAnimationFrame(() => {
         sendVarsToWebView(nextIndex);
         sendOnboardingStateToWebView(nextIndex);
@@ -1375,6 +1381,9 @@ function Overlay(props: {
     // Animates the PagerView container out, switches page, then animates back in
     if (animationType === "slidefade") {
       setIsTransitioning(true);
+      
+      // Update active screen index FIRST
+      activeScreenIndexRef.current = nextIndex;
       
       // Determine direction: forward (nextIndex > index) or backward
       const isForward = nextIndex > index;
@@ -1433,6 +1442,10 @@ function Overlay(props: {
 
     // Default fade animation: uses a white curtain overlay
     setIsTransitioning(true);
+    
+    // Update active screen index FIRST
+    activeScreenIndexRef.current = nextIndex;
+    
     Animated.timing(fadeOpacity, {
       toValue: 1,
       duration: 160,
@@ -1576,35 +1589,6 @@ function Overlay(props: {
     // Onboarding state is sent separately in onLoadEnd and onPageSelected.
   }
 
-  /**
-   * Broadcast variables to all WebViews, optionally excluding one.
-   * This mirrors the iOS SDK's broadcastVariables(excluding:) pattern.
-   * @param excludeIndex - Optional index of WebView to skip (typically the source of the update)
-   */
-  function broadcastVars(excludeIndex?: number) {
-    if (__DEV__)
-      console.log("[Rampkit] broadcastVars", {
-        recipients: webviewsRef.current.length,
-        excludeIndex,
-        vars: varsRef.current,
-      });
-    const script = buildDirectVarsScript(varsRef.current);
-    const now = Date.now();
-    for (let i = 0; i < webviewsRef.current.length; i++) {
-      // Skip the source WebView to prevent echo loops
-      if (excludeIndex !== undefined && i === excludeIndex) {
-        continue;
-      }
-      const wv = webviewsRef.current[i];
-      if (wv) {
-        // Track send time for stale value filtering
-        lastVarsSendTimeRef.current[i] = now;
-        // @ts-ignore: injectJavaScript exists on WebView instance
-        wv.injectJavaScript(script);
-      }
-    }
-  }
-
   React.useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
       if (index > 0) {
@@ -1656,24 +1640,17 @@ function Overlay(props: {
   const onPageSelected = (e: any) => {
     const pos = e.nativeEvent.position;
     setIndex(pos);
-    // ensure current page is synced with latest vars when selected
-    if (__DEV__) console.log("[Rampkit] onPageSelected", pos);
-    // Send vars multiple times with increasing delays to ensure the webview
-    // receives them. The first send might fail if the webview isn't fully ready,
-    // so we retry a few times.
+    
+    // Update active screen index FIRST (before any other processing)
+    activeScreenIndexRef.current = pos;
+    
+    if (__DEV__) console.log("[Rampkit] onPageSelected - activating screen", pos);
+    
+    // Send vars and onboarding state to the newly active screen
     requestAnimationFrame(() => {
       sendVarsToWebView(pos);
-      // Send onboarding state once after vars
       sendOnboardingStateToWebView(pos);
     });
-    // Retry after a short delay in case the first send didn't work
-    setTimeout(() => {
-      sendVarsToWebView(pos);
-    }, 50);
-    // Final retry to catch any edge cases
-    setTimeout(() => {
-      sendVarsToWebView(pos);
-    }, 150);
     
     // Track screen change event
     if (props.onScreenChange && props.screens[pos]) {
@@ -1794,7 +1771,7 @@ function Overlay(props: {
       props.onNotificationPermissionResult?.(!!result?.granted);
     } catch (_) {}
 
-    // Save to shared vars and broadcast to all pages
+    // Save to shared vars and send to active screen only
     try {
       varsRef.current = {
         ...varsRef.current,
@@ -1805,7 +1782,8 @@ function Overlay(props: {
           ios: result?.ios,
         },
       };
-      broadcastVars();
+      // Only send to active screen to avoid broadcast loops
+      sendVarsToWebView(activeScreenIndexRef.current);
     } catch (_) {}
   }
 
@@ -1865,6 +1843,13 @@ function Overlay(props: {
               domStorageEnabled
               hideKeyboardAccessoryView={true}
               onLoadEnd={() => {
+                // Only initialize each screen ONCE to avoid repeated processing
+                if (initializedScreensRef.current.has(i)) {
+                  if (__DEV__) console.log(`[Rampkit] onLoadEnd skipped (already initialized): ${i}`);
+                  return;
+                }
+                initializedScreensRef.current.add(i);
+                
                 setLoadedCount((c: number) => c + 1);
                 if (i === 0) {
                   setFirstPageLoaded(true);
@@ -1874,12 +1859,14 @@ function Overlay(props: {
                     props.onScreenChange(0, props.screens[0].id);
                   }
                 }
-                // Initialize this page with current vars (isInitialLoad=true to enable stale filter)
+                // Initialize this page with current vars
                 if (__DEV__)
-                  console.log("[Rampkit] onLoadEnd init send vars", i);
+                  console.log("[Rampkit] onLoadEnd initializing screen", i);
                 sendVarsToWebView(i, true);
-                // Send onboarding state on initial load (separate from vars to avoid loops)
-                sendOnboardingStateToWebView(i);
+                // Only send onboarding state to the ACTIVE screen (index 0 on initial load)
+                if (i === activeScreenIndexRef.current) {
+                  sendOnboardingStateToWebView(i);
+                }
               }}
               onMessage={(ev: any) => {
                 const raw = ev.nativeEvent.data;
@@ -1888,46 +1875,37 @@ function Overlay(props: {
                 try {
                   // JSON path
                   const data = JSON.parse(raw);
-                  // 1) Variables from a page → update shared + broadcast to OTHER pages
-                  // This mirrors the iOS SDK pattern with stale value filtering.
+                  // 1) Variables from a page → update shared state
+                  // CRITICAL: Only accept variable updates from the ACTIVE screen
+                  // This prevents inactive screens from causing infinite broadcast loops
                   if (
                     data?.type === "rampkit:variables" &&
                     data?.vars &&
                     typeof data.vars === "object"
                   ) {
+                    // CRITICAL: Ignore variable updates from non-active screens
+                    // Only the currently visible screen should be able to update variables
+                    if (i !== activeScreenIndexRef.current) {
+                      if (__DEV__) {
+                        console.log(`[Rampkit] ignoring variables from inactive screen ${i} (active: ${activeScreenIndexRef.current})`);
+                      }
+                      return;
+                    }
+                    
                     if (__DEV__)
                       console.log(
-                        "[Rampkit] received variables from page",
+                        "[Rampkit] received variables from ACTIVE page",
                         i,
                         data.vars
                       );
-                    
-                    // Check if this page is within the stale value window
-                    // (we recently sent vars to it and it may be echoing back defaults)
-                    const now = Date.now();
-                    const lastSendTime = lastVarsSendTimeRef.current[i] || 0;
-                    const timeSinceSend = now - lastSendTime;
-                    const isWithinStaleWindow = timeSinceSend < STALE_VALUE_WINDOW_MS;
-                    
-                    if (__DEV__) {
-                      console.log("[Rampkit] stale check:", {
-                        pageIndex: i,
-                        isWithinStaleWindow,
-                        timeSinceSend,
-                      });
-                    }
                     
                     let changed = false;
                     const newVars: Record<string, any> = {};
                     
                     for (const [key, value] of Object.entries<any>(data.vars)) {
                       // CRITICAL: Filter out onboarding.* variables
-                      // These are read-only from the WebView's perspective and should only be
-                      // controlled by the SDK. Accepting them back creates infinite loops.
+                      // These are read-only from the WebView's perspective
                       if (key.startsWith('onboarding.')) {
-                        if (__DEV__) {
-                          console.log(`[Rampkit] ignoring read-only onboarding variable: ${key}`);
-                        }
                         continue;
                       }
                       
@@ -1936,22 +1914,6 @@ function Overlay(props: {
                         key
                       );
                       const hostVal = (varsRef.current as any)[key];
-                      
-                      // Stale value filtering (matches iOS SDK behavior):
-                      // If we're within the stale window, don't let empty/default values
-                      // overwrite existing non-empty host values.
-                      // This prevents pages from clobbering user input with cached defaults
-                      // when they first become active/visible.
-                      if (isWithinStaleWindow && hasHostVal) {
-                        const hostIsNonEmpty = hostVal !== "" && hostVal !== null && hostVal !== undefined;
-                        const incomingIsEmpty = value === "" || value === null || value === undefined;
-                        if (hostIsNonEmpty && incomingIsEmpty) {
-                          if (__DEV__) {
-                            console.log(`[Rampkit] filtering stale empty value for key "${key}": keeping "${hostVal}"`);
-                          }
-                          continue; // Skip this key, keep host value
-                        }
-                      }
                       
                       // Accept the update if value is different
                       if (!hasHostVal || hostVal !== value) {
@@ -1962,12 +1924,9 @@ function Overlay(props: {
                     
                     if (changed) {
                       varsRef.current = { ...varsRef.current, ...newVars };
-                      // Broadcast to all WebViews EXCEPT the source (index i)
-                      // This prevents echo loops and matches iOS SDK behavior
-                      broadcastVars(i);
+                      // NOTE: Don't broadcast to all screens - just update shared state
+                      // Other screens will get updated vars when they become active
                     }
-                    // NOTE: Do NOT send vars back to source page - it already has them
-                    // and would just echo them back again, creating a ping-pong loop
                     return;
                   }
                   // 2) A page asked for current vars → send only to that page
