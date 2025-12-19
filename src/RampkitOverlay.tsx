@@ -1921,6 +1921,16 @@ function Overlay(props: {
                     const newVars: Record<string, any> = {};
                     
                     for (const [key, value] of Object.entries<any>(data.vars)) {
+                      // CRITICAL: Filter out onboarding.* variables
+                      // These are read-only from the WebView's perspective and should only be
+                      // controlled by the SDK. Accepting them back creates infinite loops.
+                      if (key.startsWith('onboarding.')) {
+                        if (__DEV__) {
+                          console.log(`[Rampkit] ignoring read-only onboarding variable: ${key}`);
+                        }
+                        continue;
+                      }
+                      
                       const hasHostVal = Object.prototype.hasOwnProperty.call(
                         varsRef.current,
                         key
@@ -1956,9 +1966,8 @@ function Overlay(props: {
                       // This prevents echo loops and matches iOS SDK behavior
                       broadcastVars(i);
                     }
-                    // CRITICAL: Also send merged vars BACK to source page
-                    // This ensures window.__rampkitVariables is updated for dynamic tap evaluation
-                    sendVarsToWebView(i);
+                    // NOTE: Do NOT send vars back to source page - it already has them
+                    // and would just echo them back again, creating a ping-pong loop
                     return;
                   }
                   // 2) A page asked for current vars → send only to that page
