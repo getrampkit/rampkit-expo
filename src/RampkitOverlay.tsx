@@ -1143,8 +1143,8 @@ function Overlay(props: {
   
   const allLoaded = loadedCount >= props.screens.length;
   const hasTrackedInitialScreen = useRef(false);
-  // shared vars across all webviews
-  const varsRef = useRef({} as Record<string, any>);
+  // shared vars across all webviews - INITIALIZE from props.variables!
+  const varsRef = useRef(props.variables || {} as Record<string, any>);
   // hold refs for injection
   const webviewsRef = useRef([] as any[]);
   // Track when we last SENT vars to each page (for stale value filtering)
@@ -1156,6 +1156,10 @@ function Overlay(props: {
   const initializedScreensRef = useRef(new Set<number>());
   // Track the currently active screen index (matches iOS SDK's activeScreenIndex)
   const activeScreenIndexRef = useRef(0);
+  // Track when a screen was activated (to filter out stale echoes during settling period)
+  const screenActivationTimeRef = useRef({ 0: Date.now() } as Record<number, number>);
+  // Settling period - ignore variable updates from a screen for this long after activation
+  const SCREEN_SETTLING_MS = 300;
 
   // ============================================================================
   // Navigation Resolution Helpers (matches iOS SDK behavior)
@@ -1358,8 +1362,9 @@ function Overlay(props: {
     // Slide animation: use PagerView's built-in animated page change
     // and skip the fade curtain overlay.
     if (animationType === "slide") {
-      // Update active screen index FIRST
+      // Update active screen index and activation time FIRST
       activeScreenIndexRef.current = nextIndex;
+      screenActivationTimeRef.current[nextIndex] = Date.now();
       
       // @ts-ignore: methods exist on PagerView instance
       const pager = pagerRef.current as any;
@@ -1382,8 +1387,9 @@ function Overlay(props: {
     if (animationType === "slidefade") {
       setIsTransitioning(true);
       
-      // Update active screen index FIRST
+      // Update active screen index and activation time FIRST
       activeScreenIndexRef.current = nextIndex;
+      screenActivationTimeRef.current[nextIndex] = Date.now();
       
       // Determine direction: forward (nextIndex > index) or backward
       const isForward = nextIndex > index;
@@ -1443,8 +1449,9 @@ function Overlay(props: {
     // Default fade animation: uses a white curtain overlay
     setIsTransitioning(true);
     
-    // Update active screen index FIRST
+    // Update active screen index and activation time FIRST
     activeScreenIndexRef.current = nextIndex;
+    screenActivationTimeRef.current[nextIndex] = Date.now();
     
     Animated.timing(fadeOpacity, {
       toValue: 1,
@@ -1490,30 +1497,45 @@ function Overlay(props: {
       try {
         var payload = ${json};
         var newVars = payload.vars;
-        // Directly update the global variables object
-        window.__rampkitVariables = newVars;
+        
+        // Update ALL variable storage locations for consistency
+        // This ensures dynamic tap handlers can find the latest values
+        window.__rampkitVariables = Object.assign({}, window.__rampkitVariables || {}, newVars);
+        
+        // Also update window.__rampkitVars (used by template resolver and dynamic tap)
+        if (window.__rampkitVars) {
+          Object.keys(newVars).forEach(function(k) {
+            window.__rampkitVars[k] = newVars[k];
+          });
+        } else {
+          window.__rampkitVars = Object.assign({}, newVars);
+        }
+        
+        // Also update RK_VARS if it exists (fallback storage)
+        if (window.RK_VARS) {
+          Object.keys(newVars).forEach(function(k) {
+            window.RK_VARS[k] = newVars[k];
+          });
+        }
+        
         // Call the handler if available
         if (typeof window.__rkHandleVarsUpdate === 'function') {
           window.__rkHandleVarsUpdate(newVars);
         }
-        // Dispatch MessageEvent (matches iOS SDK format) - this is what the page's JS listens for
+        
+        // Dispatch MessageEvent to trigger template resolver
         try {
           document.dispatchEvent(new MessageEvent('message', {data: payload}));
         } catch(e) {}
-        // Also dispatch on window for compatibility
-        try {
-          window.dispatchEvent(new MessageEvent('message', {data: payload}));
-        } catch(e) {}
+        
         // Also dispatch custom event for any listeners
         try {
           document.dispatchEvent(new CustomEvent('rampkit:vars-updated', {detail: newVars}));
         } catch(e) {}
-        // Call global callback if defined
-        if (typeof window.onRampkitVarsUpdate === 'function') {
-          window.onRampkitVarsUpdate(newVars);
-        }
+        
+        console.log('[RampKit] Variables updated:', Object.keys(newVars).length, 'keys');
       } catch(e) {
-        console.log('[Rampkit] buildDirectVarsScript error:', e);
+        console.log('[RampKit] buildDirectVarsScript error:', e);
       }
     })();`;
   }
@@ -1641,8 +1663,9 @@ function Overlay(props: {
     const pos = e.nativeEvent.position;
     setIndex(pos);
     
-    // Update active screen index FIRST (before any other processing)
+    // Update active screen index and activation time FIRST
     activeScreenIndexRef.current = pos;
+    screenActivationTimeRef.current[pos] = Date.now();
     
     if (__DEV__) console.log("[Rampkit] onPageSelected - activating screen", pos);
     
@@ -1892,11 +1915,24 @@ function Overlay(props: {
                       return;
                     }
                     
+                    const now = Date.now();
+                    
+                    // Check if this screen is still in the settling period after activation
+                    // During settling, we filter more aggressively to prevent stale echoes
+                    const activationTime = screenActivationTimeRef.current[i] || 0;
+                    const timeSinceActivation = now - activationTime;
+                    const isSettling = timeSinceActivation < SCREEN_SETTLING_MS;
+                    
+                    // Check if we recently sent vars to this page
+                    const lastSendTime = lastVarsSendTimeRef.current[i] || 0;
+                    const timeSinceSend = now - lastSendTime;
+                    const isWithinStaleWindow = timeSinceSend < STALE_VALUE_WINDOW_MS;
+                    
                     if (__DEV__)
                       console.log(
                         "[Rampkit] received variables from ACTIVE page",
                         i,
-                        data.vars
+                        { isSettling, timeSinceActivation, isWithinStaleWindow, timeSinceSend }
                       );
                     
                     let changed = false;
@@ -1915,6 +1951,19 @@ function Overlay(props: {
                       );
                       const hostVal = (varsRef.current as any)[key];
                       
+                      // During settling period OR stale window: protect non-empty values
+                      // This prevents the screen from clobbering user input with defaults
+                      if ((isSettling || isWithinStaleWindow) && hasHostVal) {
+                        const hostIsNonEmpty = hostVal !== "" && hostVal !== null && hostVal !== undefined;
+                        const incomingIsEmpty = value === "" || value === null || value === undefined;
+                        if (hostIsNonEmpty && incomingIsEmpty) {
+                          if (__DEV__) {
+                            console.log(`[Rampkit] protecting value for "${key}": "${hostVal}" (settling: ${isSettling})`);
+                          }
+                          continue; // Skip - keep existing non-empty value
+                        }
+                      }
+                      
                       // Accept the update if value is different
                       if (!hasHostVal || hostVal !== value) {
                         newVars[key] = value;
@@ -1924,8 +1973,15 @@ function Overlay(props: {
                     
                     if (changed) {
                       varsRef.current = { ...varsRef.current, ...newVars };
-                      // NOTE: Don't broadcast to all screens - just update shared state
-                      // Other screens will get updated vars when they become active
+                      if (__DEV__) {
+                        console.log("[Rampkit] variables updated:", newVars);
+                      }
+                      
+                      // CRITICAL: Send merged vars back to the active screen
+                      // This ensures window.__rampkitVariables has the complete state
+                      // which is needed for dynamic tap conditions to evaluate correctly
+                      // Only send if there were actual changes to prevent echo loops
+                      sendVarsToWebView(i);
                     }
                     return;
                   }
