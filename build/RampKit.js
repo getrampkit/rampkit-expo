@@ -12,6 +12,7 @@ const DeviceInfoCollector_1 = require("./DeviceInfoCollector");
 const EventManager_1 = require("./EventManager");
 const RampKitNative_1 = require("./RampKitNative");
 const constants_1 = require("./constants");
+const OnboardingResponseStorage_1 = require("./OnboardingResponseStorage");
 class RampKitCore {
     constructor() {
         this.config = null;
@@ -22,6 +23,8 @@ class RampKitCore {
         this.appStateSubscription = null;
         this.lastAppState = "active";
         this.initialized = false;
+        /** Custom App User ID provided by the developer (alias for their user system) */
+        this.appUserID = null;
     }
     static get instance() {
         if (!this._instance)
@@ -29,49 +32,60 @@ class RampKitCore {
         return this._instance;
     }
     /**
-     * Initialize the RampKit SDK
+     * Configure the RampKit SDK
+     * @param config Configuration options including appId, callbacks, and optional appUserID
      */
-    async init(config) {
+    async configure(config) {
         this.config = config;
         this.appId = config.appId;
         this.onOnboardingFinished = config.onOnboardingFinished;
         this.onShowPaywall = config.onShowPaywall || config.showPaywall;
+        // Store custom App User ID if provided (this is an alias, not the RampKit user ID)
+        if (config.appUserID) {
+            this.appUserID = config.appUserID;
+            console.log("[RampKit] Configure: appUserID set to", this.appUserID);
+        }
         try {
             // Step 1: Collect device info (includes user ID generation)
-            console.log("[RampKit] Init: Collecting device info...");
-            this.deviceInfo = await (0, DeviceInfoCollector_1.collectDeviceInfo)();
+            console.log("[RampKit] Configure: Collecting device info...");
+            const baseDeviceInfo = await (0, DeviceInfoCollector_1.collectDeviceInfo)();
+            // Add the custom appUserID to device info
+            this.deviceInfo = {
+                ...baseDeviceInfo,
+                appUserID: this.appUserID,
+            };
             this.userId = this.deviceInfo.appUserId;
-            console.log("[RampKit] Init: userId", this.userId);
+            console.log("[RampKit] Configure: userId", this.userId);
             // Step 2: Send device info to /app-users endpoint
-            console.log("[RampKit] Init: Sending user data to backend...");
+            console.log("[RampKit] Configure: Sending user data to backend...");
             await this.sendUserDataToBackend(this.deviceInfo);
             // Step 3: Initialize event manager
-            console.log("[RampKit] Init: Initializing event manager...");
+            console.log("[RampKit] Configure: Initializing event manager...");
             EventManager_1.eventManager.initialize(config.appId, this.deviceInfo);
             // Step 4: Track app session started
             EventManager_1.eventManager.trackAppSessionStarted(this.deviceInfo.isFirstLaunch, this.deviceInfo.launchCount);
             // Step 5: Setup app state listener for background/foreground tracking
             this.setupAppStateListener();
             // Step 6: Start transaction observer for automatic purchase tracking
-            console.log("[RampKit] Init: Starting transaction observer...");
+            console.log("[RampKit] Configure: Starting transaction observer...");
             await RampKitNative_1.TransactionObserver.start(config.appId);
             this.initialized = true;
         }
         catch (e) {
-            console.log("[RampKit] Init: Failed to initialize device info", e);
+            console.log("[RampKit] Configure: Failed to initialize device info", e);
             // Fallback to just getting user ID
             try {
                 this.userId = await (0, userId_1.getRampKitUserId)();
             }
             catch (e2) {
-                console.log("[RampKit] Init: Failed to resolve user id", e2);
+                console.log("[RampKit] Configure: Failed to resolve user id", e2);
             }
         }
         // Load onboarding data
-        console.log("[RampKit] Init: Starting onboarding load...");
+        console.log("[RampKit] Configure: Starting onboarding load...");
         try {
             const manifestUrl = `${constants_1.MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
-            console.log("[RampKit] Init: Fetching manifest from", manifestUrl);
+            console.log("[RampKit] Configure: Fetching manifest from", manifestUrl);
             const manifestResponse = await globalThis.fetch(manifestUrl);
             const manifest = await manifestResponse.json();
             if (!manifest.onboardings || manifest.onboardings.length === 0) {
@@ -79,27 +93,72 @@ class RampKitCore {
             }
             // Use the first onboarding
             const firstOnboarding = manifest.onboardings[0];
-            console.log("[RampKit] Init: Using onboarding", firstOnboarding.name, firstOnboarding.id);
+            console.log("[RampKit] Configure: Using onboarding", firstOnboarding.name, firstOnboarding.id);
             // Fetch the actual onboarding data
             const onboardingResponse = await globalThis.fetch(firstOnboarding.url);
             const json = await onboardingResponse.json();
             this.onboardingData = json;
-            console.log("[RampKit] Init: onboardingId", json && json.onboardingId);
-            console.log("[RampKit] Init: Onboarding loaded");
+            console.log("[RampKit] Configure: onboardingId", json && json.onboardingId);
+            console.log("[RampKit] Configure: Onboarding loaded");
         }
         catch (error) {
-            console.log("[RampKit] Init: Onboarding load failed", error);
+            console.log("[RampKit] Configure: Onboarding load failed", error);
             this.onboardingData = null;
         }
-        console.log("[RampKit] Init: Finished", config);
+        console.log("[RampKit] Configure: Finished", config);
         // Optionally auto-show onboarding overlay
         try {
             if (this.onboardingData && config.autoShowOnboarding) {
-                console.log("[RampKit] Init: Auto-show onboarding");
+                console.log("[RampKit] Configure: Auto-show onboarding");
                 this.showOnboarding();
             }
         }
         catch (_) { }
+    }
+    /**
+     * @deprecated Use `configure()` instead. This method will be removed in a future version.
+     */
+    async init(config) {
+        console.warn("[RampKit] init() is deprecated. Use configure() instead.");
+        return this.configure(config);
+    }
+    /**
+     * Set a custom App User ID to associate with this user.
+     * This is an alias for your own user identification system.
+     *
+     * Note: This does NOT replace the RampKit-generated user ID (appUserId).
+     * RampKit will continue to use its own stable UUID for internal tracking.
+     * This custom ID is sent to the backend for you to correlate with your own user database.
+     *
+     * @param appUserID Your custom user identifier
+     */
+    async setAppUserID(appUserID) {
+        this.appUserID = appUserID;
+        console.log("[RampKit] setAppUserID:", appUserID);
+        // Update device info with the new appUserID
+        if (this.deviceInfo) {
+            this.deviceInfo = {
+                ...this.deviceInfo,
+                appUserID: appUserID,
+            };
+            // Sync updated info to backend
+            if (this.initialized) {
+                try {
+                    await this.sendUserDataToBackend(this.deviceInfo);
+                    console.log("[RampKit] setAppUserID: Synced to backend");
+                }
+                catch (e) {
+                    console.warn("[RampKit] setAppUserID: Failed to sync to backend", e);
+                }
+            }
+        }
+    }
+    /**
+     * Get the custom App User ID if one has been set.
+     * @returns The custom App User ID or null if not set
+     */
+    getAppUserID() {
+        return this.appUserID;
     }
     /**
      * Send user/device data to the /app-users endpoint
@@ -170,6 +229,13 @@ class RampKitCore {
      */
     isInitialized() {
         return this.initialized;
+    }
+    /**
+     * Get all stored onboarding responses
+     * @returns Promise resolving to array of OnboardingResponse objects
+     */
+    async getOnboardingResponses() {
+        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveResponses();
     }
     /**
      * Show the onboarding overlay
@@ -323,9 +389,12 @@ class RampKitCore {
         this.deviceInfo = null;
         this.onboardingData = null;
         this.initialized = false;
+        this.appUserID = null;
+        // Clear stored onboarding responses
+        await OnboardingResponseStorage_1.OnboardingResponseStorage.clearResponses();
         console.log("[RampKit] Reset: Re-initializing SDK...");
         // Re-initialize with stored config
-        await this.init(this.config);
+        await this.configure(this.config);
     }
 }
 exports.RampKitCore = RampKitCore;

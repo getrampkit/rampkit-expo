@@ -6,7 +6,8 @@ import PagerView, {
 } from "react-native-pager-view";
 import { WebView } from "react-native-webview";
 import { Haptics, StoreReview, Notifications } from "./RampKitNative";
-import { RampKitContext, NavigationData } from "./types";
+import { RampKitContext, NavigationData, OnboardingResponse } from "./types";
+import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -2030,6 +2031,21 @@ function Overlay(props: {
                     try {
                       props.onShowPaywall?.(data?.payload);
                     } catch (_) {}
+                    return;
+                  }
+                  // 7) Question answered - persist response locally
+                  if (data?.type === "rampkit:question-answered") {
+                    const questionId = data?.questionId;
+                    if (questionId) {
+                      const response: OnboardingResponse = {
+                        questionId,
+                        answer: data?.answer ?? "",
+                        questionText: data?.questionText,
+                        screenName: props.screens[i]?.id,
+                        answeredAt: new Date().toISOString(),
+                      };
+                      OnboardingResponseStorage.saveResponse(response);
+                    }
                     return;
                   }
                   if (

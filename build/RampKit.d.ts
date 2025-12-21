@@ -2,7 +2,7 @@
  * RampKit Core SDK
  * Main SDK class for RampKit Expo integration
  */
-import { DeviceInfo, RampKitConfig, EventContext } from "./types";
+import { DeviceInfo, RampKitConfig, EventContext, OnboardingResponse } from "./types";
 export declare class RampKitCore {
     private static _instance;
     private config;
@@ -15,11 +15,34 @@ export declare class RampKitCore {
     private appStateSubscription;
     private lastAppState;
     private initialized;
+    /** Custom App User ID provided by the developer (alias for their user system) */
+    private appUserID;
     static get instance(): RampKitCore;
     /**
-     * Initialize the RampKit SDK
+     * Configure the RampKit SDK
+     * @param config Configuration options including appId, callbacks, and optional appUserID
+     */
+    configure(config: RampKitConfig): Promise<void>;
+    /**
+     * @deprecated Use `configure()` instead. This method will be removed in a future version.
      */
     init(config: RampKitConfig): Promise<void>;
+    /**
+     * Set a custom App User ID to associate with this user.
+     * This is an alias for your own user identification system.
+     *
+     * Note: This does NOT replace the RampKit-generated user ID (appUserId).
+     * RampKit will continue to use its own stable UUID for internal tracking.
+     * This custom ID is sent to the backend for you to correlate with your own user database.
+     *
+     * @param appUserID Your custom user identifier
+     */
+    setAppUserID(appUserID: string): Promise<void>;
+    /**
+     * Get the custom App User ID if one has been set.
+     * @returns The custom App User ID or null if not set
+     */
+    getAppUserID(): string | null;
     /**
      * Send user/device data to the /app-users endpoint
      */
@@ -44,6 +67,11 @@ export declare class RampKitCore {
      * Check if SDK is initialized
      */
     isInitialized(): boolean;
+    /**
+     * Get all stored onboarding responses
+     * @returns Promise resolving to array of OnboardingResponse objects
+     */
+    getOnboardingResponses(): Promise<OnboardingResponse[]>;
     /**
      * Show the onboarding overlay
      */

@@ -46,6 +46,8 @@ export type {
   // Navigation types for spatial layout-based navigation
   NavigationData,
   ScreenPosition,
+  // Onboarding response storage types
+  OnboardingResponse,
   // Event property types
   AppSessionStartedProperties,
   AppSessionEndedProperties,

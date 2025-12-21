@@ -43,6 +43,7 @@ export async function collectDeviceInfo(): Promise<DeviceInfo> {
     const deviceInfo: DeviceInfo = {
       // User & Session Identifiers
       appUserId: nativeInfo.appUserId,
+      appUserID: null, // Custom app user ID is set separately via config or setAppUserID()
       vendorId: nativeInfo.vendorId,
       appSessionId: nativeInfo.appSessionId,
 
@@ -155,6 +156,7 @@ function getFallbackDeviceInfo(): DeviceInfo {
 
   return {
     appUserId: fallbackUserId,
+    appUserID: null, // Custom app user ID is set separately via config or setAppUserID()
     vendorId: null,
     appSessionId: sessionId,
     installDate: now,

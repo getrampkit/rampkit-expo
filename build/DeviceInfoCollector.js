@@ -46,6 +46,7 @@ async function collectDeviceInfo() {
         const deviceInfo = {
             // User & Session Identifiers
             appUserId: nativeInfo.appUserId,
+            appUserID: null, // Custom app user ID is set separately via config or setAppUserID()
             vendorId: nativeInfo.vendorId,
             appSessionId: nativeInfo.appSessionId,
             // Launch Tracking
@@ -141,6 +142,7 @@ function getFallbackDeviceInfo() {
     sessionStartTime = new Date();
     return {
         appUserId: fallbackUserId,
+        appUserID: null, // Custom app user ID is set separately via config or setAppUserID()
         vendorId: null,
         appSessionId: sessionId,
         installDate: now,

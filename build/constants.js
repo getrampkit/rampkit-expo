@@ -18,6 +18,8 @@ exports.STORAGE_KEYS = {
     INSTALL_DATE: "rk_install_date",
     LAUNCH_COUNT: "rk_launch_count",
     LAST_LAUNCH: "rk_last_launch",
+    // Onboarding responses (persisted)
+    ONBOARDING_RESPONSES: "rk_onboarding_responses",
 };
 exports.CAPABILITIES = [
     "onboarding",

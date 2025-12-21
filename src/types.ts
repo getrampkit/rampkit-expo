@@ -9,6 +9,12 @@
 export interface DeviceInfo {
   // User & Session Identifiers
   appUserId: string;
+  /**
+   * Custom App User ID provided by the developer.
+   * This is an alias for their own user identification system.
+   * Does NOT replace appUserId - RampKit still uses its own generated ID.
+   */
+  appUserID: string | null;
   vendorId: string | null;
   appSessionId: string;
 
@@ -286,6 +292,16 @@ export interface RampKitConfig {
   onOnboardingFinished?: (payload?: any) => void;
   onShowPaywall?: (payload?: any) => void;
   showPaywall?: (payload?: any) => void;
+  /**
+   * Optional custom App User ID to associate with this user.
+   * This is an alias for your own user identification system - it does NOT replace
+   * the RampKit-generated user ID (appUserId). RampKit will continue to generate
+   * and use its own stable UUID for internal tracking.
+   *
+   * Use this to link RampKit analytics with your own user database.
+   * Can also be set later via RampKit.setAppUserID().
+   */
+  appUserID?: string;
 }
 
 // ============================================================================
@@ -373,5 +389,25 @@ export interface ScreenPosition {
   y: number;
   /** Row classification: "main" for main row screens, "variant" for screens below */
   row: "main" | "variant";
+}
+
+// ============================================================================
+// Onboarding Response Storage
+// ============================================================================
+
+/**
+ * Represents a single onboarding question response stored locally
+ */
+export interface OnboardingResponse {
+  /** Unique identifier for the question */
+  questionId: string;
+  /** The user's answer (can be any JSON-serializable value) */
+  answer: any;
+  /** Optional text of the question shown to user */
+  questionText?: string;
+  /** Screen where the question was answered */
+  screenName?: string;
+  /** ISO 8601 timestamp when the answer was recorded */
+  answeredAt: string;
 }
 

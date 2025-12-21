@@ -48,6 +48,7 @@ const react_native_root_siblings_1 = __importDefault(require("react-native-root-
 const react_native_pager_view_1 = __importDefault(require("react-native-pager-view"));
 const react_native_webview_1 = require("react-native-webview");
 const RampKitNative_1 = require("./RampKitNative");
+const OnboardingResponseStorage_1 = require("./OnboardingResponseStorage");
 // Reuse your injected script from App
 exports.injectedHardening = `
 (function(){
@@ -1652,7 +1653,7 @@ function Overlay(props) {
                                     sendOnboardingStateToWebView(i);
                                 }
                             }, onMessage: (ev) => {
-                                var _a, _b, _c, _d;
+                                var _a, _b, _c, _d, _e, _f;
                                 const raw = ev.nativeEvent.data;
                                 console.log("raw", raw);
                                 // Accept either raw strings or JSON payloads from your editor
@@ -1774,6 +1775,21 @@ function Overlay(props) {
                                         catch (_) { }
                                         return;
                                     }
+                                    // 7) Question answered - persist response locally
+                                    if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:question-answered") {
+                                        const questionId = data === null || data === void 0 ? void 0 : data.questionId;
+                                        if (questionId) {
+                                            const response = {
+                                                questionId,
+                                                answer: (_c = data === null || data === void 0 ? void 0 : data.answer) !== null && _c !== void 0 ? _c : "",
+                                                questionText: data === null || data === void 0 ? void 0 : data.questionText,
+                                                screenName: (_d = props.screens[i]) === null || _d === void 0 ? void 0 : _d.id,
+                                                answeredAt: new Date().toISOString(),
+                                            };
+                                            OnboardingResponseStorage_1.OnboardingResponseStorage.saveResponse(response);
+                                        }
+                                        return;
+                                    }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:continue" ||
                                         (data === null || data === void 0 ? void 0 : data.type) === "continue") {
                                         handleAdvance(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
@@ -1811,7 +1827,7 @@ function Overlay(props) {
                                         return;
                                     }
                                 }
-                                catch (_e) {
+                                catch (_g) {
                                     // String path
                                     if (raw === "rampkit:tap" ||
                                         raw === "next" ||
@@ -1838,7 +1854,7 @@ function Overlay(props) {
                                     if (raw === "rampkit:onboarding-finished") {
                                         setOnboardingCompleted(true);
                                         try {
-                                            (_c = props.onOnboardingFinished) === null || _c === void 0 ? void 0 : _c.call(props, undefined);
+                                            (_e = props.onOnboardingFinished) === null || _e === void 0 ? void 0 : _e.call(props, undefined);
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true });
@@ -1846,7 +1862,7 @@ function Overlay(props) {
                                     }
                                     if (raw === "rampkit:show-paywall") {
                                         try {
-                                            (_d = props.onShowPaywall) === null || _d === void 0 ? void 0 : _d.call(props);
+                                            (_f = props.onShowPaywall) === null || _f === void 0 ? void 0 : _f.call(props);
                                         }
                                         catch (_) { }
                                         return;
