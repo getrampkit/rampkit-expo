@@ -12,8 +12,6 @@ export declare class RampKitCore {
     private deviceInfo;
     private onOnboardingFinished?;
     private onShowPaywall?;
-    private appStateSubscription;
-    private lastAppState;
     private initialized;
     /** Custom App User ID provided by the developer (alias for their user system) */
     private appUserID;
@@ -47,10 +45,6 @@ export declare class RampKitCore {
      * Send user/device data to the /app-users endpoint
      */
     private sendUserDataToBackend;
-    /**
-     * Setup app state listener for background/foreground tracking
-     */
-    private setupAppStateListener;
     /**
      * Get the onboarding data
      */
@@ -87,14 +81,6 @@ export declare class RampKitCore {
      * Track a custom event
      */
     trackEvent(eventName: string, properties?: Record<string, any>, context?: Partial<EventContext>): void;
-    /**
-     * Track a screen view
-     */
-    trackScreenView(screenName: string, referrer?: string): void;
-    /**
-     * Track a CTA tap
-     */
-    trackCtaTap(buttonId: string, buttonText?: string): void;
     /**
      * Reset the SDK state and re-initialize
      * Call this when a user logs out or when you need to clear all cached state

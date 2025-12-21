@@ -580,7 +580,7 @@ function showRampkitOverlay(opts) {
             (_a = opts.onClose) === null || _a === void 0 ? void 0 : _a.call(opts);
         }, onOnboardingFinished: opts.onOnboardingFinished, onShowPaywall: opts.onShowPaywall, onRegisterClose: (handler) => {
             activeCloseHandler = handler;
-        }, onScreenChange: opts.onScreenChange, onOnboardingAbandoned: opts.onOnboardingAbandoned, onNotificationPermissionRequested: opts.onNotificationPermissionRequested, onNotificationPermissionResult: opts.onNotificationPermissionResult })));
+        }, onScreenChange: opts.onScreenChange, onOnboardingAbandoned: opts.onOnboardingAbandoned, onNotificationPermissionRequested: opts.onNotificationPermissionRequested, onNotificationPermissionResult: opts.onNotificationPermissionResult, onCloseAction: opts.onCloseAction })));
     // Once shown, we can safely discard the preloader sibling if present
     if (preloadSibling) {
         preloadSibling.destroy();
@@ -1653,7 +1653,7 @@ function Overlay(props) {
                                     sendOnboardingStateToWebView(i);
                                 }
                             }, onMessage: (ev) => {
-                                var _a, _b, _c, _d, _e, _f;
+                                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
                                 const raw = ev.nativeEvent.data;
                                 console.log("raw", raw);
                                 // Accept either raw strings or JSON payloads from your editor
@@ -1819,7 +1819,12 @@ function Overlay(props) {
                                         return;
                                     }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:close") {
-                                        handleRequestClose();
+                                        // Track close action for onboarding completion
+                                        try {
+                                            (_e = props.onCloseAction) === null || _e === void 0 ? void 0 : _e.call(props, i, ((_f = props.screens[i]) === null || _f === void 0 ? void 0 : _f.id) || "");
+                                        }
+                                        catch (_) { }
+                                        handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked
                                         return;
                                     }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:haptic") {
@@ -1827,7 +1832,7 @@ function Overlay(props) {
                                         return;
                                     }
                                 }
-                                catch (_g) {
+                                catch (_l) {
                                     // String path
                                     if (raw === "rampkit:tap" ||
                                         raw === "next" ||
@@ -1854,7 +1859,7 @@ function Overlay(props) {
                                     if (raw === "rampkit:onboarding-finished") {
                                         setOnboardingCompleted(true);
                                         try {
-                                            (_e = props.onOnboardingFinished) === null || _e === void 0 ? void 0 : _e.call(props, undefined);
+                                            (_g = props.onOnboardingFinished) === null || _g === void 0 ? void 0 : _g.call(props, undefined);
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true });
@@ -1862,7 +1867,7 @@ function Overlay(props) {
                                     }
                                     if (raw === "rampkit:show-paywall") {
                                         try {
-                                            (_f = props.onShowPaywall) === null || _f === void 0 ? void 0 : _f.call(props);
+                                            (_h = props.onShowPaywall) === null || _h === void 0 ? void 0 : _h.call(props);
                                         }
                                         catch (_) { }
                                         return;
@@ -1891,7 +1896,12 @@ function Overlay(props) {
                                         return;
                                     }
                                     if (raw === "rampkit:close") {
-                                        handleRequestClose();
+                                        // Track close action for onboarding completion
+                                        try {
+                                            (_j = props.onCloseAction) === null || _j === void 0 ? void 0 : _j.call(props, i, ((_k = props.screens[i]) === null || _k === void 0 ? void 0 : _k.id) || "");
+                                        }
+                                        catch (_) { }
+                                        handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked
                                         return;
                                     }
                                     if (raw.startsWith("haptic:")) {

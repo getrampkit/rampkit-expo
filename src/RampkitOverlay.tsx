@@ -570,6 +570,8 @@ export function showRampkitOverlay(opts: {
   onOnboardingAbandoned?: (reason: string, lastScreenIndex: number, lastScreenId: string) => void;
   onNotificationPermissionRequested?: () => void;
   onNotificationPermissionResult?: (granted: boolean) => void;
+  // Called when close action is explicitly triggered (rampkit:close)
+  onCloseAction?: (screenIndex: number, screenId: string) => void;
 }) {
   console.log("[RampKit] showRampkitOverlay called, context:", opts.rampkitContext ? "present" : "missing");
   if (sibling) return; // already visible
@@ -599,6 +601,7 @@ export function showRampkitOverlay(opts: {
         onOnboardingAbandoned={opts.onOnboardingAbandoned}
         onNotificationPermissionRequested={opts.onNotificationPermissionRequested}
         onNotificationPermissionResult={opts.onNotificationPermissionResult}
+        onCloseAction={opts.onCloseAction}
       />
     )
   );
@@ -1126,6 +1129,8 @@ function Overlay(props: {
   onOnboardingAbandoned?: (reason: string, lastScreenIndex: number, lastScreenId: string) => void;
   onNotificationPermissionRequested?: () => void;
   onNotificationPermissionResult?: (granted: boolean) => void;
+  // Called when close action is explicitly triggered (rampkit:close)
+  onCloseAction?: (screenIndex: number, screenId: string) => void;
 }) {
   const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
@@ -2080,7 +2085,11 @@ function Overlay(props: {
                     return;
                   }
                   if (data?.type === "rampkit:close") {
-                    handleRequestClose();
+                    // Track close action for onboarding completion
+                    try {
+                      props.onCloseAction?.(i, props.screens[i]?.id || "");
+                    } catch (_) {}
+                    handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked
                     return;
                   }
                   if (data?.type === "rampkit:haptic") {
@@ -2151,7 +2160,11 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:close") {
-                    handleRequestClose();
+                    // Track close action for onboarding completion
+                    try {
+                      props.onCloseAction?.(i, props.screens[i]?.id || "");
+                    } catch (_) {}
+                    handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked
                     return;
                   }
                   if (raw.startsWith("haptic:")) {

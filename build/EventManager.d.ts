@@ -2,7 +2,7 @@
  * RampKit Event Manager
  * Handles event tracking for the /app-user-events endpoint
  */
-import { DeviceInfo, EventContext, RampKitEventName } from "./types";
+import { DeviceInfo, EventContext, RampKitEventName, PurchaseCompletedProperties, PurchaseStartedProperties, PurchaseRestoredProperties } from "./types";
 declare class EventManager {
     private static _instance;
     private appId;
@@ -68,49 +68,46 @@ declare class EventManager {
      */
     trackAppSessionStarted(isFirstLaunch: boolean, launchCount: number): void;
     /**
-     * Track app backgrounded
-     */
-    trackAppBackgrounded(sessionDurationSeconds: number): void;
-    /**
-     * Track app foregrounded
-     */
-    trackAppForegrounded(): void;
-    /**
-     * Track screen view
-     */
-    trackScreenView(screenName: string, referrer?: string): void;
-    /**
-     * Track CTA tap
-     */
-    trackCtaTap(buttonId: string, buttonText?: string): void;
-    /**
      * Track onboarding started
      */
     trackOnboardingStarted(onboardingId: string, totalSteps?: number): void;
-    /**
-     * Track onboarding screen viewed
-     */
-    trackOnboardingScreenViewed(screenName: string, screenIndex: number, totalScreens: number, onboardingId?: string): void;
-    /**
-     * Track onboarding question answered
-     */
-    trackOnboardingQuestionAnswered(questionId: string, answer: any, questionText?: string, onboardingId?: string): void;
-    /**
-     * Track onboarding completed
-     */
-    trackOnboardingCompleted(completedSteps: number, totalSteps: number, onboardingId?: string): void;
     /**
      * Track onboarding abandoned
      */
     trackOnboardingAbandoned(reason: string, lastScreenName?: string, onboardingId?: string): void;
     /**
-     * Track notification prompt shown
+     * Check if onboarding has already been marked as completed
      */
-    trackNotificationsPromptShown(): void;
+    hasOnboardingBeenCompleted(): Promise<boolean>;
+    /**
+     * Mark onboarding as completed in persistent storage
+     */
+    private markOnboardingAsCompleted;
+    /**
+     * Reset onboarding completion status (useful for testing or user reset)
+     */
+    resetOnboardingCompletionStatus(): Promise<void>;
+    /**
+     * Track onboarding completed event - fires ONCE per user
+     * Called when:
+     * 1. User completes the onboarding flow (onboarding-finished action)
+     * 2. User closes the onboarding (close action)
+     * 3. A paywall is shown (show-paywall action)
+     *
+     * @param trigger - The reason for completion ("finished", "closed", "paywall_shown")
+     * @param completedSteps - Number of steps the user completed
+     * @param totalSteps - Total number of steps in the onboarding
+     * @param onboardingId - The onboarding ID
+     */
+    trackOnboardingCompletedOnce(trigger: string, completedSteps?: number, totalSteps?: number, onboardingId?: string): Promise<void>;
     /**
      * Track notification response
      */
     trackNotificationsResponse(status: "granted" | "denied" | "provisional"): void;
+    /**
+     * Track option selected (interaction event)
+     */
+    trackOptionSelected(optionId: string, optionValue: any, questionId?: string): void;
     /**
      * Track paywall shown
      */
@@ -120,32 +117,24 @@ declare class EventManager {
         currency?: string;
     }>): void;
     /**
-     * Track paywall primary action tap
-     */
-    trackPaywallPrimaryActionTap(paywallId: string, productId?: string): void;
-    /**
-     * Track paywall closed
-     */
-    trackPaywallClosed(paywallId: string, reason: "dismissed" | "purchased" | "backgrounded"): void;
-    /**
      * Track purchase started
+     * Call this when user initiates a purchase from a paywall
      */
-    trackPurchaseStarted(productId: string, amount?: number, currency?: string): void;
+    trackPurchaseStarted(properties: PurchaseStartedProperties): void;
     /**
      * Track purchase completed
+     * CRITICAL: originalTransactionId is required for attribution
+     * Context (paywallId, screenName, flowId) is automatically included
      */
-    trackPurchaseCompleted(properties: {
-        productId: string;
-        amount: number;
-        currency: string;
-        transactionId: string;
-        originalTransactionId?: string;
-        purchaseDate?: string;
-    }): void;
+    trackPurchaseCompleted(properties: PurchaseCompletedProperties): void;
     /**
      * Track purchase failed
      */
     trackPurchaseFailed(productId: string, errorCode: string, errorMessage: string): void;
+    /**
+     * Track purchase restored
+     */
+    trackPurchaseRestored(properties: PurchaseRestoredProperties): void;
     /**
      * Reset the event manager (e.g., on logout)
      */

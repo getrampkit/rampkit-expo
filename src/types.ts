@@ -133,35 +133,10 @@ export interface AppSessionStartedProperties {
   launchCount: number;
 }
 
-export interface AppSessionEndedProperties {
-  reason: string;
-  sessionDurationSeconds: number;
-}
-
-export interface AppBackgroundedProperties {
-  sessionDurationSeconds: number;
-}
-
-export interface AppForegroundedProperties {}
-
 // Onboarding Events
 export interface OnboardingStartedProperties {
   onboardingId?: string;
   totalSteps?: number;
-}
-
-export interface OnboardingScreenViewedProperties {
-  onboardingId?: string;
-  screenName: string;
-  screenIndex: number;
-  totalScreens: number;
-}
-
-export interface OnboardingQuestionAnsweredProperties {
-  onboardingId?: string;
-  questionId: string;
-  answer: any;
-  questionText?: string;
 }
 
 export interface OnboardingCompletedProperties {
@@ -169,6 +144,7 @@ export interface OnboardingCompletedProperties {
   timeToCompleteSeconds: number;
   completedSteps: number;
   totalSteps: number;
+  trigger: string;
 }
 
 export interface OnboardingAbandonedProperties {
@@ -178,20 +154,14 @@ export interface OnboardingAbandonedProperties {
   timeSpentSeconds: number;
 }
 
-// Navigation Events
-export interface ScreenViewProperties {
-  screenName: string;
-  referrer?: string;
-}
-
-export interface CtaTapProperties {
-  buttonId: string;
-  buttonText?: string;
+// Interaction Events
+export interface OptionSelectedProperties {
+  optionId: string;
+  optionValue: any;
+  questionId?: string;
 }
 
 // Permission Events
-export interface NotificationsPromptShownProperties {}
-
 export interface NotificationsResponseProperties {
   status: "granted" | "denied" | "provisional";
 }
@@ -207,30 +177,53 @@ export interface PaywallShownProperties {
   }>;
 }
 
-export interface PaywallPrimaryActionTapProperties {
-  paywallId: string;
-  productId?: string;
-}
-
-export interface PaywallClosedProperties {
-  paywallId: string;
-  reason: "dismissed" | "purchased" | "backgrounded";
-}
-
 // Purchase Events
 export interface PurchaseStartedProperties {
   productId: string;
   amount?: number;
   currency?: string;
+  priceFormatted?: string;
 }
 
+/**
+ * Properties for purchase_completed event
+ * Critical for attribution: originalTransactionId links renewals to original purchase
+ */
 export interface PurchaseCompletedProperties {
+  /** Product identifier (e.g., "com.app.yearly") */
   productId: string;
-  amount: number;
-  currency: string;
+  /** Price as number (e.g., 39.99) */
+  amount?: number;
+  /** Currency code (e.g., "USD") */
+  currency?: string;
+  /** Formatted price string (e.g., "$39.99") */
+  priceFormatted?: string;
+  /** Unique transaction ID from App Store/Play Store */
   transactionId: string;
-  originalTransactionId?: string;
-  purchaseDate?: string;
+  /** CRITICAL: Original transaction ID - links renewals to original purchase */
+  originalTransactionId: string;
+  /** ISO 8601 purchase timestamp */
+  purchaseDate: string;
+  /** ISO 8601 expiration date for subscriptions */
+  expirationDate?: string;
+  /** Whether this is a free trial */
+  isTrial?: boolean;
+  /** Whether this is an introductory offer */
+  isIntroOffer?: boolean;
+  /** Offer type: "introductory", "promotional", "code", or null */
+  offerType?: string | null;
+  /** Offer ID if applicable */
+  offerId?: string;
+  /** ISO 8601 duration (e.g., "P1M" for monthly, "P1Y" for yearly) */
+  subscriptionPeriod?: string;
+  /** Subscription group ID */
+  subscriptionGroupId?: string;
+  /** App Store storefront country code */
+  storefront?: string;
+  /** Environment: "Production" or "Sandbox" */
+  environment?: string;
+  /** Quantity purchased */
+  quantity?: number;
 }
 
 export interface PurchaseFailedProperties {
@@ -239,43 +232,39 @@ export interface PurchaseFailedProperties {
   errorMessage: string;
 }
 
+export interface PurchaseRestoredProperties {
+  productId: string;
+  transactionId?: string;
+  originalTransactionId?: string;
+}
+
 // ============================================================================
 // Event Names
 // ============================================================================
 
-export type AppLifecycleEventName =
-  | "app_session_started"
-  | "app_session_ended"
-  | "app_backgrounded"
-  | "app_foregrounded";
+export type AppLifecycleEventName = "app_session_started";
 
 export type OnboardingEventName =
   | "onboarding_started"
-  | "onboarding_screen_viewed"
-  | "onboarding_question_answered"
   | "onboarding_completed"
   | "onboarding_abandoned";
 
-export type NavigationEventName = "screen_view" | "cta_tap";
+export type InteractionEventName = "option_selected";
 
-export type PermissionEventName =
-  | "notifications_prompt_shown"
-  | "notifications_response";
+export type PermissionEventName = "notifications_response" | "tracking_response";
 
-export type PaywallEventName =
-  | "paywall_shown"
-  | "paywall_primary_action_tap"
-  | "paywall_closed";
+export type PaywallEventName = "paywall_shown";
 
 export type PurchaseEventName =
   | "purchase_started"
   | "purchase_completed"
-  | "purchase_failed";
+  | "purchase_failed"
+  | "purchase_restored";
 
 export type RampKitEventName =
   | AppLifecycleEventName
   | OnboardingEventName
-  | NavigationEventName
+  | InteractionEventName
   | PermissionEventName
   | PaywallEventName
   | PurchaseEventName;

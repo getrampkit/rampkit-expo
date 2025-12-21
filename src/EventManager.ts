@@ -9,8 +9,12 @@ import {
   EventContext,
   RampKitEvent,
   RampKitEventName,
+  PurchaseCompletedProperties,
+  PurchaseStartedProperties,
+  PurchaseRestoredProperties,
 } from "./types";
-import { ENDPOINTS, SUPABASE_ANON_KEY } from "./constants";
+import { ENDPOINTS, SUPABASE_ANON_KEY, STORAGE_KEYS } from "./constants";
+import { getStoredValue, setStoredValue } from "./RampKitNative";
 
 /**
  * Generate a UUID v4 using Math.random
@@ -248,93 +252,11 @@ class EventManager {
   }
 
   /**
-   * Track app backgrounded
-   */
-  trackAppBackgrounded(sessionDurationSeconds: number): void {
-    this.track("app_backgrounded", { sessionDurationSeconds });
-  }
-
-  /**
-   * Track app foregrounded
-   */
-  trackAppForegrounded(): void {
-    this.track("app_foregrounded", {});
-  }
-
-  /**
-   * Track screen view
-   */
-  trackScreenView(screenName: string, referrer?: string): void {
-    this.setCurrentScreen(screenName);
-    this.track("screen_view", { screenName, referrer });
-  }
-
-  /**
-   * Track CTA tap
-   */
-  trackCtaTap(buttonId: string, buttonText?: string): void {
-    this.track("cta_tap", { buttonId, buttonText });
-  }
-
-  /**
    * Track onboarding started
    */
   trackOnboardingStarted(onboardingId: string, totalSteps?: number): void {
     this.startOnboardingTracking(onboardingId);
     this.track("onboarding_started", { onboardingId, totalSteps });
-  }
-
-  /**
-   * Track onboarding screen viewed
-   */
-  trackOnboardingScreenViewed(
-    screenName: string,
-    screenIndex: number,
-    totalScreens: number,
-    onboardingId?: string
-  ): void {
-    this.setCurrentScreen(screenName);
-    this.track("onboarding_screen_viewed", {
-      onboardingId: onboardingId || this.currentOnboardingId,
-      screenName,
-      screenIndex,
-      totalScreens,
-    });
-  }
-
-  /**
-   * Track onboarding question answered
-   */
-  trackOnboardingQuestionAnswered(
-    questionId: string,
-    answer: any,
-    questionText?: string,
-    onboardingId?: string
-  ): void {
-    this.track("onboarding_question_answered", {
-      onboardingId: onboardingId || this.currentOnboardingId,
-      questionId,
-      answer,
-      questionText,
-    });
-  }
-
-  /**
-   * Track onboarding completed
-   */
-  trackOnboardingCompleted(
-    completedSteps: number,
-    totalSteps: number,
-    onboardingId?: string
-  ): void {
-    const timeToCompleteSeconds = this.getOnboardingDurationSeconds();
-    this.track("onboarding_completed", {
-      onboardingId: onboardingId || this.currentOnboardingId,
-      timeToCompleteSeconds,
-      completedSteps,
-      totalSteps,
-    });
-    this.endOnboardingTracking();
   }
 
   /**
@@ -355,11 +277,85 @@ class EventManager {
     this.endOnboardingTracking();
   }
 
+  // ============================================================================
+  // Onboarding Completion (Once Per User)
+  // ============================================================================
+
   /**
-   * Track notification prompt shown
+   * Check if onboarding has already been marked as completed
    */
-  trackNotificationsPromptShown(): void {
-    this.track("notifications_prompt_shown", {});
+  async hasOnboardingBeenCompleted(): Promise<boolean> {
+    try {
+      const value = await getStoredValue(STORAGE_KEYS.ONBOARDING_COMPLETED);
+      return value === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Mark onboarding as completed in persistent storage
+   */
+  private async markOnboardingAsCompleted(): Promise<void> {
+    try {
+      await setStoredValue(STORAGE_KEYS.ONBOARDING_COMPLETED, "true");
+      console.log("[RampKit] EventManager: onboarding marked as completed (persisted)");
+    } catch (error) {
+      console.warn("[RampKit] EventManager: failed to persist onboarding completion:", error);
+    }
+  }
+
+  /**
+   * Reset onboarding completion status (useful for testing or user reset)
+   */
+  async resetOnboardingCompletionStatus(): Promise<void> {
+    try {
+      await setStoredValue(STORAGE_KEYS.ONBOARDING_COMPLETED, "");
+      console.log("[RampKit] EventManager: onboarding completion status reset");
+    } catch (error) {
+      console.warn("[RampKit] EventManager: failed to reset onboarding completion:", error);
+    }
+  }
+
+  /**
+   * Track onboarding completed event - fires ONCE per user
+   * Called when:
+   * 1. User completes the onboarding flow (onboarding-finished action)
+   * 2. User closes the onboarding (close action)
+   * 3. A paywall is shown (show-paywall action)
+   *
+   * @param trigger - The reason for completion ("finished", "closed", "paywall_shown")
+   * @param completedSteps - Number of steps the user completed
+   * @param totalSteps - Total number of steps in the onboarding
+   * @param onboardingId - The onboarding ID
+   */
+  async trackOnboardingCompletedOnce(
+    trigger: string,
+    completedSteps?: number,
+    totalSteps?: number,
+    onboardingId?: string
+  ): Promise<void> {
+    // Check if already completed - skip if so
+    const alreadyCompleted = await this.hasOnboardingBeenCompleted();
+    if (alreadyCompleted) {
+      console.log(`[RampKit] EventManager: onboarding_completed already sent, skipping (trigger: ${trigger})`);
+      return;
+    }
+
+    // Mark as completed BEFORE sending to prevent race conditions
+    await this.markOnboardingAsCompleted();
+
+    const timeToCompleteSeconds = this.getOnboardingDurationSeconds();
+    this.track("onboarding_completed", {
+      onboardingId: onboardingId || this.currentOnboardingId,
+      timeToCompleteSeconds,
+      completedSteps,
+      totalSteps,
+      trigger,
+    });
+
+    this.endOnboardingTracking();
+    console.log(`[RampKit] EventManager: 📊 onboarding_completed sent (trigger: ${trigger})`);
   }
 
   /**
@@ -367,6 +363,13 @@ class EventManager {
    */
   trackNotificationsResponse(status: "granted" | "denied" | "provisional"): void {
     this.track("notifications_response", { status });
+  }
+
+  /**
+   * Track option selected (interaction event)
+   */
+  trackOptionSelected(optionId: string, optionValue: any, questionId?: string): void {
+    this.track("option_selected", { optionId, optionValue, questionId });
   }
 
   /**
@@ -386,49 +389,22 @@ class EventManager {
   }
 
   /**
-   * Track paywall primary action tap
-   */
-  trackPaywallPrimaryActionTap(paywallId: string, productId?: string): void {
-    this.track(
-      "paywall_primary_action_tap",
-      { paywallId, productId },
-      { paywallId }
-    );
-  }
-
-  /**
-   * Track paywall closed
-   */
-  trackPaywallClosed(
-    paywallId: string,
-    reason: "dismissed" | "purchased" | "backgrounded"
-  ): void {
-    this.track("paywall_closed", { paywallId, reason }, { paywallId });
-    this.setCurrentPaywall(null);
-  }
-
-  /**
    * Track purchase started
+   * Call this when user initiates a purchase from a paywall
    */
-  trackPurchaseStarted(
-    productId: string,
-    amount?: number,
-    currency?: string
-  ): void {
-    this.track("purchase_started", { productId, amount, currency });
+  trackPurchaseStarted(properties: PurchaseStartedProperties): void {
+    // Context (paywallId, placement) is automatically included from current state
+    // which was set when trackPaywallShown was called
+    this.track("purchase_started", properties);
   }
 
   /**
    * Track purchase completed
+   * CRITICAL: originalTransactionId is required for attribution
+   * Context (paywallId, screenName, flowId) is automatically included
    */
-  trackPurchaseCompleted(properties: {
-    productId: string;
-    amount: number;
-    currency: string;
-    transactionId: string;
-    originalTransactionId?: string;
-    purchaseDate?: string;
-  }): void {
+  trackPurchaseCompleted(properties: PurchaseCompletedProperties): void {
+    // Context is automatically included from current state (paywallId, placement, etc.)
     this.track("purchase_completed", properties);
   }
 
@@ -441,6 +417,13 @@ class EventManager {
     errorMessage: string
   ): void {
     this.track("purchase_failed", { productId, errorCode, errorMessage });
+  }
+
+  /**
+   * Track purchase restored
+   */
+  trackPurchaseRestored(properties: PurchaseRestoredProperties): void {
+    this.track("purchase_restored", properties);
   }
 
   /**
@@ -460,6 +443,9 @@ class EventManager {
     this.onboardingStartTime = null;
     this.currentOnboardingId = null;
     this.initialized = false;
+
+    // Reset onboarding completion status so it can fire again for new user
+    this.resetOnboardingCompletionStatus();
   }
 }
 

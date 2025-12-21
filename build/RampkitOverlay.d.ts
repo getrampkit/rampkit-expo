@@ -24,6 +24,7 @@ export declare function showRampkitOverlay(opts: {
     onOnboardingAbandoned?: (reason: string, lastScreenIndex: number, lastScreenId: string) => void;
     onNotificationPermissionRequested?: () => void;
     onNotificationPermissionResult?: (granted: boolean) => void;
+    onCloseAction?: (screenIndex: number, screenId: string) => void;
 }): void;
 export declare function hideRampkitOverlay(): void;
 export declare function closeRampkitOverlay(): void;
@@ -50,5 +51,6 @@ declare function Overlay(props: {
     onOnboardingAbandoned?: (reason: string, lastScreenIndex: number, lastScreenId: string) => void;
     onNotificationPermissionRequested?: () => void;
     onNotificationPermissionResult?: (granted: boolean) => void;
+    onCloseAction?: (screenIndex: number, screenId: string) => void;
 }): any;
 export default Overlay;

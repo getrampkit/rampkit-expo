@@ -50,24 +50,16 @@ export type {
   OnboardingResponse,
   // Event property types
   AppSessionStartedProperties,
-  AppSessionEndedProperties,
-  AppBackgroundedProperties,
-  AppForegroundedProperties,
   OnboardingStartedProperties,
-  OnboardingScreenViewedProperties,
-  OnboardingQuestionAnsweredProperties,
   OnboardingCompletedProperties,
   OnboardingAbandonedProperties,
-  ScreenViewProperties,
-  CtaTapProperties,
-  NotificationsPromptShownProperties,
+  OptionSelectedProperties,
   NotificationsResponseProperties,
   PaywallShownProperties,
-  PaywallPrimaryActionTapProperties,
-  PaywallClosedProperties,
   PurchaseStartedProperties,
   PurchaseCompletedProperties,
   PurchaseFailedProperties,
+  PurchaseRestoredProperties,
 } from "./types";
 
 // Export constants

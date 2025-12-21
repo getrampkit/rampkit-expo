@@ -5,7 +5,6 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RampKitCore = void 0;
-const react_native_1 = require("react-native");
 const RampkitOverlay_1 = require("./RampkitOverlay");
 const userId_1 = require("./userId");
 const DeviceInfoCollector_1 = require("./DeviceInfoCollector");
@@ -20,8 +19,6 @@ class RampKitCore {
         this.userId = null;
         this.appId = null;
         this.deviceInfo = null;
-        this.appStateSubscription = null;
-        this.lastAppState = "active";
         this.initialized = false;
         /** Custom App User ID provided by the developer (alias for their user system) */
         this.appUserID = null;
@@ -64,9 +61,7 @@ class RampKitCore {
             EventManager_1.eventManager.initialize(config.appId, this.deviceInfo);
             // Step 4: Track app session started
             EventManager_1.eventManager.trackAppSessionStarted(this.deviceInfo.isFirstLaunch, this.deviceInfo.launchCount);
-            // Step 5: Setup app state listener for background/foreground tracking
-            this.setupAppStateListener();
-            // Step 6: Start transaction observer for automatic purchase tracking
+            // Step 5: Start transaction observer for automatic purchase tracking
             console.log("[RampKit] Configure: Starting transaction observer...");
             await RampKitNative_1.TransactionObserver.start(config.appId);
             this.initialized = true;
@@ -196,26 +191,6 @@ class RampKitCore {
         }
     }
     /**
-     * Setup app state listener for background/foreground tracking
-     */
-    setupAppStateListener() {
-        this.appStateSubscription = react_native_1.AppState.addEventListener("change", (nextAppState) => {
-            if (this.lastAppState === "active" &&
-                (nextAppState === "background" || nextAppState === "inactive")) {
-                // App went to background
-                const sessionDuration = (0, DeviceInfoCollector_1.getSessionDurationSeconds)();
-                EventManager_1.eventManager.trackAppBackgrounded(sessionDuration);
-            }
-            else if ((this.lastAppState === "background" ||
-                this.lastAppState === "inactive") &&
-                nextAppState === "active") {
-                // App came to foreground
-                EventManager_1.eventManager.trackAppForegrounded();
-            }
-            this.lastAppState = nextAppState;
-        });
-    }
-    /**
      * Get the onboarding data
      */
     getOnboardingData() {
@@ -314,27 +289,34 @@ class RampKitCore {
                 navigation,
                 onOnboardingFinished: (payload) => {
                     var _a;
-                    // Track onboarding completed
-                    EventManager_1.eventManager.trackOnboardingCompleted(screens.length, screens.length, onboardingId);
+                    // Track onboarding completed (once per user) - trigger: finished
+                    EventManager_1.eventManager.trackOnboardingCompletedOnce("finished", screens.length, screens.length, onboardingId);
                     try {
                         (_a = this.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(this, payload);
                     }
                     catch (_) { }
                 },
-                onShowPaywall: (opts === null || opts === void 0 ? void 0 : opts.onShowPaywall) || (opts === null || opts === void 0 ? void 0 : opts.showPaywall) || this.onShowPaywall,
-                onScreenChange: (screenIndex, screenId) => {
-                    // Track screen view within onboarding
-                    EventManager_1.eventManager.trackOnboardingScreenViewed(screenId, screenIndex, screens.length, onboardingId);
+                onShowPaywall: (payload) => {
+                    // Track onboarding completed (once per user) - trigger: paywall_shown
+                    EventManager_1.eventManager.trackOnboardingCompletedOnce("paywall_shown", screens.length, // We don't know exact step, use total
+                    screens.length, onboardingId);
+                    // Call the original callback
+                    const paywallCallback = (opts === null || opts === void 0 ? void 0 : opts.onShowPaywall) || (opts === null || opts === void 0 ? void 0 : opts.showPaywall) || this.onShowPaywall;
+                    try {
+                        paywallCallback === null || paywallCallback === void 0 ? void 0 : paywallCallback(payload);
+                    }
+                    catch (_) { }
                 },
                 onOnboardingAbandoned: (reason, lastScreenIndex, lastScreenId) => {
                     // Track onboarding abandoned
                     EventManager_1.eventManager.trackOnboardingAbandoned(reason, lastScreenId, onboardingId);
                 },
-                onNotificationPermissionRequested: () => {
-                    EventManager_1.eventManager.trackNotificationsPromptShown();
-                },
                 onNotificationPermissionResult: (granted) => {
                     EventManager_1.eventManager.trackNotificationsResponse(granted ? "granted" : "denied");
+                },
+                onCloseAction: (screenIndex, _screenId) => {
+                    // Track onboarding completed (once per user) - trigger: closed
+                    EventManager_1.eventManager.trackOnboardingCompletedOnce("closed", screenIndex + 1, screens.length, onboardingId);
                 },
             });
         }
@@ -357,18 +339,6 @@ class RampKitCore {
     trackEvent(eventName, properties = {}, context) {
         EventManager_1.eventManager.track(eventName, properties, context);
     }
-    /**
-     * Track a screen view
-     */
-    trackScreenView(screenName, referrer) {
-        EventManager_1.eventManager.trackScreenView(screenName, referrer);
-    }
-    /**
-     * Track a CTA tap
-     */
-    trackCtaTap(buttonId, buttonText) {
-        EventManager_1.eventManager.trackCtaTap(buttonId, buttonText);
-    }
     // Note: Purchase and paywall events are automatically tracked by the native
     // StoreKit 2 (iOS) and Google Play Billing (Android) transaction observers.
     // No manual tracking is needed.
@@ -384,11 +354,6 @@ class RampKitCore {
         console.log("[RampKit] Reset: Clearing SDK state...");
         // Stop transaction observer
         await RampKitNative_1.TransactionObserver.stop();
-        // Remove app state listener
-        if (this.appStateSubscription) {
-            this.appStateSubscription.remove();
-            this.appStateSubscription = null;
-        }
         // Reset event manager state
         EventManager_1.eventManager.reset();
         // Reset session

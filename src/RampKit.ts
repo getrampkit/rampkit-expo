@@ -3,7 +3,6 @@
  * Main SDK class for RampKit Expo integration
  */
 
-import { AppState } from "react-native";
 import {
   preloadRampkitOverlay,
   showRampkitOverlay,
@@ -31,8 +30,6 @@ export class RampKitCore {
   private deviceInfo: DeviceInfo | null = null;
   private onOnboardingFinished?: (payload?: any) => void;
   private onShowPaywall?: (payload?: any) => void;
-  private appStateSubscription: any = null;
-  private lastAppState: string = "active";
   private initialized: boolean = false;
   /** Custom App User ID provided by the developer (alias for their user system) */
   private appUserID: string | null = null;
@@ -84,10 +81,7 @@ export class RampKitCore {
         this.deviceInfo.launchCount
       );
 
-      // Step 5: Setup app state listener for background/foreground tracking
-      this.setupAppStateListener();
-
-      // Step 6: Start transaction observer for automatic purchase tracking
+      // Step 5: Start transaction observer for automatic purchase tracking
       console.log("[RampKit] Configure: Starting transaction observer...");
       await TransactionObserver.start(config.appId);
 
@@ -245,33 +239,6 @@ export class RampKitCore {
   }
 
   /**
-   * Setup app state listener for background/foreground tracking
-   */
-  private setupAppStateListener(): void {
-    this.appStateSubscription = AppState.addEventListener(
-      "change",
-      (nextAppState: string) => {
-        if (
-          this.lastAppState === "active" &&
-          (nextAppState === "background" || nextAppState === "inactive")
-        ) {
-          // App went to background
-          const sessionDuration = getSessionDurationSeconds();
-          eventManager.trackAppBackgrounded(sessionDuration);
-        } else if (
-          (this.lastAppState === "background" ||
-            this.lastAppState === "inactive") &&
-          nextAppState === "active"
-        ) {
-          // App came to foreground
-          eventManager.trackAppForegrounded();
-        }
-        this.lastAppState = nextAppState;
-      }
-    );
-  }
-
-  /**
    * Get the onboarding data
    */
   getOnboardingData(): any {
@@ -385,8 +352,9 @@ export class RampKitCore {
         rampkitContext,
         navigation,
         onOnboardingFinished: (payload?: any) => {
-          // Track onboarding completed
-          eventManager.trackOnboardingCompleted(
+          // Track onboarding completed (once per user) - trigger: finished
+          eventManager.trackOnboardingCompletedOnce(
+            "finished",
             screens.length,
             screens.length,
             onboardingId
@@ -395,16 +363,19 @@ export class RampKitCore {
             this.onOnboardingFinished?.(payload);
           } catch (_) {}
         },
-        onShowPaywall:
-          opts?.onShowPaywall || opts?.showPaywall || this.onShowPaywall,
-        onScreenChange: (screenIndex: number, screenId: string) => {
-          // Track screen view within onboarding
-          eventManager.trackOnboardingScreenViewed(
-            screenId,
-            screenIndex,
+        onShowPaywall: (payload?: any) => {
+          // Track onboarding completed (once per user) - trigger: paywall_shown
+          eventManager.trackOnboardingCompletedOnce(
+            "paywall_shown",
+            screens.length, // We don't know exact step, use total
             screens.length,
             onboardingId
           );
+          // Call the original callback
+          const paywallCallback = opts?.onShowPaywall || opts?.showPaywall || this.onShowPaywall;
+          try {
+            paywallCallback?.(payload);
+          } catch (_) {}
         },
         onOnboardingAbandoned: (
           reason: string,
@@ -418,12 +389,18 @@ export class RampKitCore {
             onboardingId
           );
         },
-        onNotificationPermissionRequested: () => {
-          eventManager.trackNotificationsPromptShown();
-        },
         onNotificationPermissionResult: (granted: boolean) => {
           eventManager.trackNotificationsResponse(
             granted ? "granted" : "denied"
+          );
+        },
+        onCloseAction: (screenIndex: number, _screenId: string) => {
+          // Track onboarding completed (once per user) - trigger: closed
+          eventManager.trackOnboardingCompletedOnce(
+            "closed",
+            screenIndex + 1,
+            screens.length,
+            onboardingId
           );
         },
       });
@@ -454,20 +431,6 @@ export class RampKitCore {
     eventManager.track(eventName, properties, context);
   }
 
-  /**
-   * Track a screen view
-   */
-  trackScreenView(screenName: string, referrer?: string): void {
-    eventManager.trackScreenView(screenName, referrer);
-  }
-
-  /**
-   * Track a CTA tap
-   */
-  trackCtaTap(buttonId: string, buttonText?: string): void {
-    eventManager.trackCtaTap(buttonId, buttonText);
-  }
-
   // Note: Purchase and paywall events are automatically tracked by the native
   // StoreKit 2 (iOS) and Google Play Billing (Android) transaction observers.
   // No manual tracking is needed.
@@ -486,12 +449,6 @@ export class RampKitCore {
 
     // Stop transaction observer
     await TransactionObserver.stop();
-
-    // Remove app state listener
-    if (this.appStateSubscription) {
-      this.appStateSubscription.remove();
-      this.appStateSubscription = null;
-    }
 
     // Reset event manager state
     eventManager.reset();

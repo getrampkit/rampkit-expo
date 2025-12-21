@@ -20,6 +20,8 @@ exports.STORAGE_KEYS = {
     LAST_LAUNCH: "rk_last_launch",
     // Onboarding responses (persisted)
     ONBOARDING_RESPONSES: "rk_onboarding_responses",
+    // Onboarding completion status (persisted) - fires once per user
+    ONBOARDING_COMPLETED: "rk_onboarding_completed",
 };
 exports.CAPABILITIES = [
     "onboarding",
