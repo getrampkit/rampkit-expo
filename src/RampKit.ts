@@ -216,15 +216,31 @@ export class RampKitCore {
       });
 
       if (!response.ok) {
+        // Try to get error details from response body
+        let errorDetails = "";
+        try {
+          const errorBody = await response.text();
+          errorDetails = errorBody ? ` - ${errorBody}` : "";
+        } catch {
+          // Ignore if we can't read the body
+        }
+
         console.warn(
-          "[RampKit] Init: Failed to send user data:",
-          response.status
+          `[RampKit] Configure: Failed to send user data`,
+          `\n  Status: ${response.status} ${response.statusText}`,
+          `\n  URL: ${url}`,
+          `\n  AppId: ${this.appId}`,
+          `\n  UserId: ${deviceInfo.appUserId}`,
+          errorDetails ? `\n  Error: ${errorDetails}` : ""
         );
       } else {
-        console.log("[RampKit] Init: User data sent successfully");
+        console.log("[RampKit] Configure: User data sent successfully");
       }
     } catch (error) {
-      console.warn("[RampKit] Init: Error sending user data:", error);
+      console.warn(
+        `[RampKit] Configure: Network error sending user data`,
+        `\n  Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 

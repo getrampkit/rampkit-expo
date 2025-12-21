@@ -208,16 +208,31 @@ class EventManager {
       });
 
       if (!response.ok) {
+        // Try to get error details from response body
+        let errorDetails = "";
+        try {
+          const errorBody = await response.text();
+          errorDetails = errorBody ? ` - ${errorBody}` : "";
+        } catch {
+          // Ignore if we can't read the body
+        }
+
         console.warn(
-          "[RampKit] EventManager: Failed to send event:",
-          event.eventName,
-          response.status
+          `[RampKit] EventManager: Failed to send event: ${event.eventName}`,
+          `\n  Status: ${response.status} ${response.statusText}`,
+          `\n  URL: ${url}`,
+          `\n  AppId: ${event.appId}`,
+          `\n  UserId: ${event.appUserId}`,
+          errorDetails ? `\n  Error: ${errorDetails}` : ""
         );
       } else {
         console.log("[RampKit] EventManager: Event sent:", event.eventName);
       }
     } catch (error) {
-      console.warn("[RampKit] EventManager: Error sending event:", event.eventName, error);
+      console.warn(
+        `[RampKit] EventManager: Network error sending event: ${event.eventName}`,
+        `\n  Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
