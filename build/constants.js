@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SUPABASE_ANON_KEY = exports.CAPABILITIES = exports.STORAGE_KEYS = exports.MANIFEST_BASE_URL = exports.ENDPOINTS = exports.SDK_VERSION = void 0;
 exports.SDK_VERSION = "1.0.0";
 exports.ENDPOINTS = {
-    BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1",
+    BASE_URL: "https://fmiyezqvsiywdncrwwdl.supabase.co/functions/v1",
     APP_USERS: "/app-users",
     APP_USER_EVENTS: "/app-user-events",
 };

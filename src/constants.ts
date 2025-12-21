@@ -5,7 +5,7 @@
 export const SDK_VERSION = "1.0.0";
 
 export const ENDPOINTS = {
-  BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1",
+  BASE_URL: "https://fmiyezqvsiywdncrwwdl.supabase.co/functions/v1",
   APP_USERS: "/app-users",
   APP_USER_EVENTS: "/app-user-events",
 } as const;

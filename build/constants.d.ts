@@ -3,7 +3,7 @@
  */
 export declare const SDK_VERSION = "1.0.0";
 export declare const ENDPOINTS: {
-    readonly BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1";
+    readonly BASE_URL: "https://fmiyezqvsiywdncrwwdl.supabase.co/functions/v1";
     readonly APP_USERS: "/app-users";
     readonly APP_USER_EVENTS: "/app-user-events";
 };
