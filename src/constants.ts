@@ -5,7 +5,7 @@
 export const SDK_VERSION = "1.0.0";
 
 export const ENDPOINTS = {
-  BASE_URL: "https://fmiyezqvsiywdncrwwdl.supabase.co/functions/v1",
+  BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1",
   APP_USERS: "/app-users",
   APP_USER_EVENTS: "/app-user-events",
 } as const;
@@ -32,5 +32,5 @@ export const CAPABILITIES = [
 
 // Supabase anon key for API calls
 export const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM2NTUsImV4cCI6MjA3NzY3OTY1NX0.d5XsIMGnia4n9Pou0IidipyyEfSlwpXFoeDBufMOEwE";
 

@@ -3,7 +3,7 @@
  */
 export declare const SDK_VERSION = "1.0.0";
 export declare const ENDPOINTS: {
-    readonly BASE_URL: "https://fmiyezqvsiywdncrwwdl.supabase.co/functions/v1";
+    readonly BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1";
     readonly APP_USERS: "/app-users";
     readonly APP_USER_EVENTS: "/app-user-events";
 };
@@ -16,4 +16,4 @@ export declare const STORAGE_KEYS: {
     readonly ONBOARDING_RESPONSES: "rk_onboarding_responses";
 };
 export declare const CAPABILITIES: readonly ["onboarding", "paywall_event_receiver", "haptic_feedback", "push_notifications"];
-export declare const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk";
+export declare const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM2NTUsImV4cCI6MjA3NzY3OTY1NX0.d5XsIMGnia4n9Pou0IidipyyEfSlwpXFoeDBufMOEwE";
