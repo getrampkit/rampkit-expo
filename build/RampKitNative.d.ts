@@ -19,6 +19,7 @@ interface RampKitNativeModule {
     startTransactionObserver(appId: string): Promise<TransactionObserverResult>;
     stopTransactionObserver(): Promise<void>;
     clearTrackedTransactions(): Promise<number>;
+    recheckEntitlements(): Promise<EntitlementCheckResult>;
     trackPurchaseCompleted(productId: string, transactionId?: string, originalTransactionId?: string): Promise<void>;
     trackPurchaseFromProduct(productId: string): Promise<void>;
 }
@@ -100,6 +101,28 @@ export interface SentEventResult {
     currency?: string;
     environment?: string;
 }
+export interface TrackedTransactionDetail {
+    productId: string;
+    transactionId: string;
+    originalTransactionId: string;
+    purchaseDate: string;
+    expirationDate?: string;
+    environment?: string;
+    status: "already_sent" | "skipped";
+    reason?: string;
+}
+export interface EntitlementCheckResult {
+    totalFound: number;
+    alreadyTracked: number;
+    newPurchases: number;
+    productIds: string[];
+    newProductIds: string[];
+    sentEvents?: SentEventResult[];
+    skippedReasons?: TrackedTransactionDetail[];
+    alreadyTrackedDetails?: TrackedTransactionDetail[];
+    trackedIdsCount: number;
+    error?: string;
+}
 export interface TransactionObserverResult {
     configured: boolean;
     appId: string;
@@ -107,18 +130,7 @@ export interface TransactionObserverResult {
     previouslyTrackedCount: number;
     iOSVersion: string;
     listenerStarted: boolean;
-    entitlementCheck?: {
-        totalFound: number;
-        alreadyTracked: number;
-        newPurchases: number;
-        productIds: string[];
-        newProductIds: string[];
-        sentEvents?: SentEventResult[];
-        skippedReasons?: Array<{
-            productId: string;
-            reason: string;
-        }>;
-    };
+    entitlementCheck?: EntitlementCheckResult;
     error?: string;
 }
 export type ImpactStyle = "light" | "medium" | "heavy" | "rigid" | "soft";
@@ -224,4 +236,12 @@ export declare const TransactionObserver: {
      * @returns The number of tracked transactions that were cleared
      */
     clearTracked(): Promise<number>;
+    /**
+     * Re-check current entitlements for any new purchases
+     * Call this after onboarding finishes or after a paywall is shown
+     * to catch any purchases that may have been made
+     *
+     * @returns The entitlement check result with details of all transactions
+     */
+    recheck(): Promise<EntitlementCheckResult | null>;
 };

@@ -10,6 +10,6 @@ export { collectDeviceInfo, getSessionDurationSeconds, getSessionStartTime, buil
 export { default as RampKitNative } from "./RampKitNative";
 export type { NativeDeviceInfo, NativeLaunchData } from "./RampKitNative";
 export { Haptics, StoreReview, Notifications, TransactionObserver, isNativeModuleAvailable } from "./RampKitNative";
-export type { ImpactStyle, NotificationType, NotificationOptions, NotificationPermissionResult, TransactionObserverResult, SentEventResult } from "./RampKitNative";
+export type { ImpactStyle, NotificationType, NotificationOptions, NotificationPermissionResult, TransactionObserverResult, SentEventResult, TrackedTransactionDetail, EntitlementCheckResult } from "./RampKitNative";
 export type { DeviceInfo, RampKitEvent, EventDevice, EventContext, RampKitConfig, RampKitEventName, RampKitContext, RampKitDeviceContext, RampKitUserContext, NavigationData, ScreenPosition, OnboardingResponse, AppSessionStartedProperties, OnboardingStartedProperties, OnboardingCompletedProperties, OnboardingAbandonedProperties, OptionSelectedProperties, NotificationsResponseProperties, PaywallShownProperties, PurchaseStartedProperties, PurchaseCompletedProperties, PurchaseFailedProperties, PurchaseRestoredProperties, } from "./types";
 export { SDK_VERSION, CAPABILITIES } from "./constants";

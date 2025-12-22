@@ -81,6 +81,17 @@ function createFallbackModule() {
         },
         async stopTransactionObserver() { },
         async clearTrackedTransactions() { return 0; },
+        async recheckEntitlements() {
+            return {
+                totalFound: 0,
+                alreadyTracked: 0,
+                newPurchases: 0,
+                productIds: [],
+                newProductIds: [],
+                trackedIdsCount: 0,
+                error: "Native module not available - using fallback"
+            };
+        },
         async trackPurchaseCompleted(_productId, _transactionId, _originalTransactionId) { },
         async trackPurchaseFromProduct(_productId) { },
     };
@@ -279,6 +290,72 @@ exports.Notifications = {
 // ============================================================================
 // Transaction Observer API (StoreKit 2 / Google Play Billing)
 // ============================================================================
+/**
+ * Helper function to log entitlement check results with full details
+ */
+function logEntitlementCheckResult(result, context) {
+    console.log("[RampKit] ");
+    console.log("[RampKit] ═══════════════════════════════════════════════════════════");
+    console.log(`[RampKit] 📊 ENTITLEMENT CHECK RESULT (${context})`);
+    console.log("[RampKit] ═══════════════════════════════════════════════════════════");
+    console.log("[RampKit]    Total entitlements found:", result.totalFound);
+    console.log("[RampKit]    Already sent to backend: ", result.alreadyTracked);
+    console.log("[RampKit]    New events sent:         ", result.newPurchases);
+    console.log("[RampKit]    Tracked IDs in storage:  ", result.trackedIdsCount);
+    console.log("[RampKit]    Product IDs:             ", result.productIds);
+    // Log already tracked transactions with full details
+    if (result.alreadyTrackedDetails && result.alreadyTrackedDetails.length > 0) {
+        console.log("[RampKit] ");
+        console.log("[RampKit] ✅ ALREADY SENT TRANSACTIONS:");
+        for (const tx of result.alreadyTrackedDetails) {
+            console.log("[RampKit]    ────────────────────────────────────────");
+            console.log("[RampKit]    📦 Product:", tx.productId);
+            console.log("[RampKit]       Transaction ID:", tx.transactionId);
+            console.log("[RampKit]       Original Transaction ID:", tx.originalTransactionId);
+            console.log("[RampKit]       Purchase Date:", tx.purchaseDate);
+            if (tx.expirationDate) {
+                console.log("[RampKit]       Expiration Date:", tx.expirationDate);
+            }
+            if (tx.environment) {
+                console.log("[RampKit]       Environment:", tx.environment);
+            }
+            console.log("[RampKit]       Status: ✅ ALREADY SENT TO BACKEND");
+        }
+    }
+    // Log newly sent events
+    if (result.sentEvents && result.sentEvents.length > 0) {
+        console.log("[RampKit] ");
+        console.log("[RampKit] 📤 NEWLY SENT EVENTS:");
+        for (const event of result.sentEvents) {
+            console.log("[RampKit]    ────────────────────────────────────────");
+            console.log("[RampKit]    📦 Product:", event.productId);
+            console.log("[RampKit]       Transaction ID:", event.transactionId);
+            console.log("[RampKit]       Original Transaction ID:", event.originalTransactionId);
+            console.log("[RampKit]       Purchase Date:", event.purchaseDate);
+            console.log("[RampKit]       Status:", event.status === "sent" ? "✅ SENT" : `❌ ${event.status.toUpperCase()}`);
+            if (event.httpStatus) {
+                console.log("[RampKit]       HTTP Status:", event.httpStatus);
+            }
+            if (event.error) {
+                console.log("[RampKit]       Error:", event.error);
+            }
+        }
+    }
+    // Log skipped transactions
+    if (result.skippedReasons && result.skippedReasons.length > 0) {
+        console.log("[RampKit] ");
+        console.log("[RampKit] ⏭️ SKIPPED TRANSACTIONS:");
+        for (const skipped of result.skippedReasons) {
+            console.log("[RampKit]    - Product:", skipped.productId, "| Reason:", skipped.reason);
+        }
+    }
+    if (result.error) {
+        console.log("[RampKit] ");
+        console.log("[RampKit] ⚠️ Error:", result.error);
+    }
+    console.log("[RampKit] ═══════════════════════════════════════════════════════════");
+    console.log("[RampKit] ");
+}
 exports.TransactionObserver = {
     /**
      * Start listening for purchase transactions
@@ -300,29 +377,7 @@ exports.TransactionObserver = {
             console.log("[RampKit]    - previouslyTrackedCount:", result.previouslyTrackedCount);
             console.log("[RampKit]    - listenerStarted:", result.listenerStarted);
             if (result.entitlementCheck) {
-                console.log("[RampKit] 📊 Entitlement check results:");
-                console.log("[RampKit]    - totalFound:", result.entitlementCheck.totalFound);
-                console.log("[RampKit]    - alreadyTracked:", result.entitlementCheck.alreadyTracked);
-                console.log("[RampKit]    - newPurchases:", result.entitlementCheck.newPurchases);
-                console.log("[RampKit]    - productIds:", result.entitlementCheck.productIds);
-                console.log("[RampKit]    - newProductIds:", result.entitlementCheck.newProductIds);
-                // Log sent events details
-                if (result.entitlementCheck.sentEvents && result.entitlementCheck.sentEvents.length > 0) {
-                    console.log("[RampKit] 📤 Sent events:");
-                    for (const event of result.entitlementCheck.sentEvents) {
-                        console.log("[RampKit]    - productId:", event.productId);
-                        console.log("[RampKit]      transactionId:", event.transactionId);
-                        console.log("[RampKit]      originalTransactionId:", event.originalTransactionId);
-                        console.log("[RampKit]      status:", event.status);
-                        console.log("[RampKit]      httpStatus:", event.httpStatus);
-                        if (event.error) {
-                            console.log("[RampKit]      error:", event.error);
-                        }
-                        if (event.reason) {
-                            console.log("[RampKit]      reason:", event.reason);
-                        }
-                    }
-                }
+                logEntitlementCheckResult(result.entitlementCheck, "STARTUP");
             }
             if (result.error) {
                 console.warn("[RampKit] ⚠️ Error:", result.error);
@@ -397,6 +452,25 @@ exports.TransactionObserver = {
         catch (e) {
             console.warn("[RampKit] ❌ Failed to clear tracked transactions:", e);
             return 0;
+        }
+    },
+    /**
+     * Re-check current entitlements for any new purchases
+     * Call this after onboarding finishes or after a paywall is shown
+     * to catch any purchases that may have been made
+     *
+     * @returns The entitlement check result with details of all transactions
+     */
+    async recheck() {
+        console.log("[RampKit] 🔄 Re-checking entitlements...");
+        try {
+            const result = await RampKitNativeModule.recheckEntitlements();
+            logEntitlementCheckResult(result, "RECHECK");
+            return result;
+        }
+        catch (e) {
+            console.warn("[RampKit] ❌ Failed to recheck entitlements:", e);
+            return null;
         }
     },
 };

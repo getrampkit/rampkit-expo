@@ -119,6 +119,15 @@ public class RampKitModule: Module {
       return count
     }
 
+    AsyncFunction("recheckEntitlements") { () -> [String: Any] in
+      print("[RampKit] 🔄 Re-checking entitlements (called from JS)...")
+      if #available(iOS 15.0, *) {
+        return await self.checkAndTrackCurrentEntitlements()
+      } else {
+        return ["error": "iOS 15+ required"]
+      }
+    }
+
     // ============================================================================
     // Manual Purchase Tracking (Fallback for Superwall/RevenueCat)
     // ============================================================================
@@ -480,6 +489,10 @@ public class RampKitModule: Module {
   @available(iOS 15.0, *)
   private func checkAndTrackCurrentEntitlements() async -> [String: Any] {
     print("[RampKit] 🔍 Checking current entitlements for missed purchases...")
+    print("[RampKit] 📚 Currently have \(trackedTransactionIds.count) tracked transaction IDs in storage")
+
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
     var foundCount = 0
     var trackedCount = 0
@@ -488,6 +501,7 @@ public class RampKitModule: Module {
     var newProductIds: [String] = []
     var sentEvents: [[String: Any]] = []
     var skippedReasons: [[String: Any]] = []
+    var alreadyTrackedDetails: [[String: Any]] = []  // NEW: Details of already-tracked transactions
 
     for await result in Transaction.currentEntitlements {
       foundCount += 1
@@ -501,26 +515,51 @@ public class RampKitModule: Module {
       let originalId = String(transaction.originalID)
       let transactionId = String(transaction.id)
       productIds.append(transaction.productID)
-      print("[RampKit] 📦 Found entitlement: \(transaction.productID), originalID: \(originalId), id: \(transactionId)")
+
+      // Build transaction details for logging
+      var txDetails: [String: Any] = [
+        "productId": transaction.productID,
+        "transactionId": transactionId,
+        "originalTransactionId": originalId,
+        "purchaseDate": formatter.string(from: transaction.purchaseDate)
+      ]
+      if let expirationDate = transaction.expirationDate {
+        txDetails["expirationDate"] = formatter.string(from: expirationDate)
+      }
+      if #available(iOS 16.0, *) {
+        txDetails["environment"] = transaction.environment.rawValue
+      }
+
+      print("[RampKit] 📦 Found entitlement:")
+      print("[RampKit]    - productId: \(transaction.productID)")
+      print("[RampKit]    - transactionId: \(transactionId)")
+      print("[RampKit]    - originalTransactionId: \(originalId)")
+      print("[RampKit]    - purchaseDate: \(formatter.string(from: transaction.purchaseDate))")
 
       // Check if we've already tracked this transaction
       if trackedTransactionIds.contains(originalId) {
         trackedCount += 1
-        print("[RampKit] ✓ Already tracked: \(transaction.productID)")
+        txDetails["status"] = "already_sent"
+        alreadyTrackedDetails.append(txDetails)
+        print("[RampKit] ✅ STATUS: Already sent to backend (originalTransactionId in tracked set)")
         continue
       }
 
       // Skip renewals and revocations
       guard transaction.originalID == transaction.id,
             transaction.revocationDate == nil else {
-        skippedReasons.append(["productId": transaction.productID, "reason": "renewal or revoked"])
+        let reason = transaction.revocationDate != nil ? "revoked" : "renewal"
+        txDetails["status"] = "skipped"
+        txDetails["reason"] = reason
+        skippedReasons.append(txDetails)
+        print("[RampKit] ⏭️ STATUS: Skipped (\(reason))")
         continue
       }
 
       // NEW transaction we haven't seen!
       newCount += 1
       newProductIds.append(transaction.productID)
-      print("[RampKit] 🆕 NEW purchase detected: \(transaction.productID)")
+      print("[RampKit] 🆕 STATUS: NEW purchase - will send to backend now...")
 
       // Track it and get the result
       let sendResult = await self.handleTransactionWithResult(transaction)
@@ -530,16 +569,24 @@ public class RampKitModule: Module {
       if let status = sendResult["status"] as? String, status == "sent" {
         trackedTransactionIds.insert(originalId)
         saveTrackedTransactions()
-        print("[RampKit] ✅ Marked as tracked after successful send: \(transaction.productID)")
+        print("[RampKit] ✅ Event sent successfully! HTTP status: \(sendResult["httpStatus"] ?? "unknown")")
+        print("[RampKit] ✅ Marked originalTransactionId \(originalId) as tracked")
       } else {
-        print("[RampKit] ⚠️ Send failed, will retry next time: \(transaction.productID)")
+        print("[RampKit] ❌ Send failed: \(sendResult["error"] ?? "unknown error")")
+        print("[RampKit] ⚠️ Will retry on next app launch")
       }
     }
 
-    print("[RampKit] 🔍 Entitlement check complete:")
-    print("[RampKit]    - Total found: \(foundCount)")
-    print("[RampKit]    - Already tracked: \(trackedCount)")
-    print("[RampKit]    - NEW (sent events): \(newCount)")
+    print("[RampKit] ")
+    print("[RampKit] 🔍 ═══════════════════════════════════════════")
+    print("[RampKit] 🔍 ENTITLEMENT CHECK SUMMARY:")
+    print("[RampKit] 🔍 ═══════════════════════════════════════════")
+    print("[RampKit]    Total entitlements found: \(foundCount)")
+    print("[RampKit]    Already sent to backend:  \(trackedCount)")
+    print("[RampKit]    Skipped (renewal/revoked): \(skippedReasons.count)")
+    print("[RampKit]    NEW events sent:          \(newCount)")
+    print("[RampKit]    Tracked IDs in storage:   \(trackedTransactionIds.count)")
+    print("[RampKit] 🔍 ═══════════════════════════════════════════")
 
     return [
       "totalFound": foundCount,
@@ -548,7 +595,9 @@ public class RampKitModule: Module {
       "productIds": productIds,
       "newProductIds": newProductIds,
       "sentEvents": sentEvents,
-      "skippedReasons": skippedReasons
+      "skippedReasons": skippedReasons,
+      "alreadyTrackedDetails": alreadyTrackedDetails,  // NEW
+      "trackedIdsCount": trackedTransactionIds.count
     ]
   }
 
