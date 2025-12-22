@@ -17,6 +17,7 @@ declare class EventManager {
     private currentPlacement;
     private onboardingStartTime;
     private currentOnboardingId;
+    private onboardingCompletedForSession;
     private initialized;
     static get instance(): EventManager;
     /**

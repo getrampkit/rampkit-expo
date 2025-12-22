@@ -46,6 +46,7 @@ class EventManager {
   // Onboarding tracking
   private onboardingStartTime: Date | null = null;
   private currentOnboardingId: string | null = null;
+  private onboardingCompletedForSession: boolean = false;
 
   // Initialization state
   private initialized: boolean = false;
@@ -125,6 +126,7 @@ class EventManager {
     this.currentOnboardingId = onboardingId;
     this.onboardingStartTime = new Date();
     this.currentFlowId = onboardingId;
+    this.onboardingCompletedForSession = false;
   }
 
   /**
@@ -266,6 +268,12 @@ class EventManager {
     lastScreenName?: string,
     onboardingId?: string
   ): void {
+    // Skip if onboarding was already completed this session
+    if (this.onboardingCompletedForSession) {
+      console.log("[RampKit] EventManager: onboarding_abandoned skipped (already completed)");
+      return;
+    }
+
     const timeSpentSeconds = this.getOnboardingDurationSeconds();
     this.track("onboarding_abandoned", {
       onboardingId: onboardingId || this.currentOnboardingId,
@@ -313,6 +321,8 @@ class EventManager {
       trigger,
     });
 
+    // Mark as completed so abandoned won't fire for this session
+    this.onboardingCompletedForSession = true;
     this.endOnboardingTracking();
   }
 
@@ -425,6 +435,7 @@ class EventManager {
     this.currentPlacement = null;
     this.onboardingStartTime = null;
     this.currentOnboardingId = null;
+    this.onboardingCompletedForSession = false;
     this.initialized = false;
   }
 }
