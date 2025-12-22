@@ -320,6 +320,7 @@ class EventManager {
     trackPurchaseStarted(properties) {
         // Context (paywallId, placement) is automatically included from current state
         // which was set when trackPaywallShown was called
+        console.log(`[RampKit] EventManager: 🛒 purchase_started`, `\n  productId: ${properties.productId}`, properties.amount ? `\n  amount: ${properties.amount} ${properties.currency || ""}` : "");
         this.track("purchase_started", properties);
     }
     /**
@@ -329,18 +330,21 @@ class EventManager {
      */
     trackPurchaseCompleted(properties) {
         // Context is automatically included from current state (paywallId, placement, etc.)
+        console.log(`[RampKit] EventManager: ✅ purchase_completed`, `\n  productId: ${properties.productId}`, `\n  transactionId: ${properties.transactionId}`, `\n  originalTransactionId: ${properties.originalTransactionId}`, properties.isTrial ? `\n  isTrial: true` : "", properties.environment ? `\n  environment: ${properties.environment}` : "");
         this.track("purchase_completed", properties);
     }
     /**
      * Track purchase failed
      */
     trackPurchaseFailed(productId, errorCode, errorMessage) {
+        console.log(`[RampKit] EventManager: ❌ purchase_failed`, `\n  productId: ${productId}`, `\n  errorCode: ${errorCode}`, `\n  errorMessage: ${errorMessage}`);
         this.track("purchase_failed", { productId, errorCode, errorMessage });
     }
     /**
      * Track purchase restored
      */
     trackPurchaseRestored(properties) {
+        console.log(`[RampKit] EventManager: 🔄 purchase_restored`, `\n  productId: ${properties.productId}`, properties.transactionId ? `\n  transactionId: ${properties.transactionId}` : "", properties.originalTransactionId ? `\n  originalTransactionId: ${properties.originalTransactionId}` : "");
         this.track("purchase_restored", properties);
     }
     /**
