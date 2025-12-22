@@ -9,14 +9,23 @@ public class RampKitModule: Module {
   private let installDateKey = "rk_install_date"
   private let launchCountKey = "rk_launch_count"
   private let lastLaunchKey = "rk_last_launch"
-  
+
   // Transaction observer task
   private var transactionObserverTask: Task<Void, Never>?
   private var appId: String?
   private var userId: String?
-  
+
+  // Queue for transactions received before SDK is configured
+  private var pendingTransactions: [Any] = []
+  private var isConfigured = false
+
   public func definition() -> ModuleDefinition {
     Name("RampKit")
+
+    // Start transaction observer immediately when module loads
+    OnCreate {
+      self.startTransactionObserverEarly()
+    }
     
     // ============================================================================
     // Device Info
@@ -89,13 +98,29 @@ public class RampKitModule: Module {
     // ============================================================================
     // Transaction Observer (StoreKit 2)
     // ============================================================================
-    
+
     AsyncFunction("startTransactionObserver") { (appId: String) in
       self.startTransactionObserver(appId: appId)
     }
-    
+
     AsyncFunction("stopTransactionObserver") { () in
       self.stopTransactionObserver()
+    }
+
+    // ============================================================================
+    // Manual Purchase Tracking (Fallback for Superwall/RevenueCat)
+    // ============================================================================
+
+    AsyncFunction("trackPurchaseCompleted") { (productId: String, transactionId: String?, originalTransactionId: String?) in
+      await self.trackPurchaseCompletedManually(
+        productId: productId,
+        transactionId: transactionId,
+        originalTransactionId: originalTransactionId
+      )
+    }
+
+    AsyncFunction("trackPurchaseFromProduct") { (productId: String) in
+      await self.trackPurchaseFromProductId(productId: productId)
     }
   }
   
@@ -386,61 +411,136 @@ public class RampKitModule: Module {
   }
   
   // MARK: - StoreKit 2 Transaction Observer
-  
+
+  /// Called on module init - starts listening BEFORE JavaScript configures us
+  private func startTransactionObserverEarly() {
+    // Get userId early so we have it ready
+    self.userId = getOrCreateUserId()
+
+    guard #available(iOS 15.0, *) else {
+      print("[RampKit] ⚠️ Transaction observer requires iOS 15+")
+      return
+    }
+
+    // Don't restart if already running
+    guard transactionObserverTask == nil else {
+      print("[RampKit] Transaction observer already running")
+      return
+    }
+
+    print("[RampKit] 🚀 Starting transaction observer early (module init)...")
+
+    transactionObserverTask = Task {
+      print("[RampKit] 👂 Transaction.updates loop starting...")
+      for await result in Transaction.updates {
+        print("[RampKit] 🎉 RECEIVED TRANSACTION UPDATE!")
+        await self.handleTransactionUpdate(result)
+      }
+      print("[RampKit] ⚠️ Transaction.updates loop exited (unexpected)")
+    }
+
+    // Also check unfinished transactions
+    Task {
+      await self.handleUnfinishedTransactions()
+    }
+  }
+
+  /// Called from JavaScript - sets appId and processes any pending transactions
   private func startTransactionObserver(appId: String) {
     self.appId = appId
     self.userId = getOrCreateUserId()
-    
-    // Cancel existing observer if any
-    transactionObserverTask?.cancel()
-    
-    // Start listening for transactions (iOS 15+)
+    self.isConfigured = true
+
+    print("[RampKit] ✅ Transaction observer configured with appId: \(appId)")
+
+    // Process any transactions that arrived before we were configured
     if #available(iOS 15.0, *) {
-      transactionObserverTask = Task {
-        await self.listenForTransactions()
-      }
-      
-      // Also check for any unfinished transactions
       Task {
-        await self.handleUnfinishedTransactions()
+        await self.processPendingTransactions()
+      }
+
+      // Debug: check current entitlements
+      Task {
+        await self.debugCurrentEntitlements()
       }
     }
-    
-    print("[RampKit] Transaction observer started")
+
+    // Ensure observer is running (in case OnCreate didn't fire)
+    if transactionObserverTask == nil {
+      startTransactionObserverEarly()
+    }
   }
-  
+
+  @available(iOS 15.0, *)
+  private func handleTransactionUpdate(_ result: VerificationResult<Transaction>) async {
+    do {
+      let transaction = try self.checkVerified(result)
+      print("[RampKit] ✅ Transaction verified: \(transaction.productID)")
+
+      if self.isConfigured, let _ = self.appId {
+        // We're configured, process immediately
+        await self.handleTransaction(transaction)
+      } else {
+        // Not configured yet, queue it
+        print("[RampKit] 📦 Queueing transaction (SDK not configured yet): \(transaction.productID)")
+        self.pendingTransactions.append(transaction)
+      }
+
+      // Always finish the transaction
+      await transaction.finish()
+      print("[RampKit] 🏁 Transaction finished: \(transaction.productID)")
+    } catch {
+      print("[RampKit] ❌ Transaction verification failed: \(error)")
+    }
+  }
+
+  @available(iOS 15.0, *)
+  private func processPendingTransactions() async {
+    guard !pendingTransactions.isEmpty else { return }
+
+    print("[RampKit] 📤 Processing \(pendingTransactions.count) pending transaction(s)...")
+
+    for item in pendingTransactions {
+      if let transaction = item as? Transaction {
+        await self.handleTransaction(transaction)
+      }
+    }
+
+    pendingTransactions.removeAll()
+    print("[RampKit] ✅ All pending transactions processed")
+  }
+
+  @available(iOS 15.0, *)
+  private func debugCurrentEntitlements() async {
+    print("[RampKit] 🔍 Checking current entitlements...")
+    var count = 0
+    for await result in Transaction.currentEntitlements {
+      if case .verified(let transaction) = result {
+        count += 1
+        print("[RampKit] 📦 Current entitlement: \(transaction.productID), originalID: \(transaction.originalID), id: \(transaction.id)")
+      }
+    }
+    print("[RampKit] 🔍 Found \(count) current entitlements")
+  }
+
   private func stopTransactionObserver() {
     transactionObserverTask?.cancel()
     transactionObserverTask = nil
+    isConfigured = false
+    pendingTransactions.removeAll()
     print("[RampKit] Transaction observer stopped")
   }
-  
-  @available(iOS 15.0, *)
-  private func listenForTransactions() async {
-    // Listen for transaction updates
-    for await result in Transaction.updates {
-      do {
-        let transaction = try self.checkVerified(result)
-        await self.handleTransaction(transaction)
-        await transaction.finish()
-      } catch {
-        print("[RampKit] Transaction verification failed: \(error)")
-      }
-    }
-  }
-  
+
   @available(iOS 15.0, *)
   private func handleUnfinishedTransactions() async {
-    // Handle any transactions that weren't finished
+    print("[RampKit] 🔍 Checking for unfinished transactions...")
+    var count = 0
     for await result in Transaction.unfinished {
-      do {
-        let transaction = try self.checkVerified(result)
-        await self.handleTransaction(transaction)
-        await transaction.finish()
-      } catch {
-        print("[RampKit] Unfinished transaction verification failed: \(error)")
-      }
+      count += 1
+      print("[RampKit] 📦 Found unfinished transaction #\(count)")
+      await self.handleTransactionUpdate(result)
     }
+    print("[RampKit] 🔍 Finished checking unfinished transactions. Found: \(count)")
   }
   
   @available(iOS 15.0, *)
@@ -457,7 +557,15 @@ public class RampKitModule: Module {
   
   @available(iOS 15.0, *)
   private func handleTransaction(_ transaction: Transaction) async {
-    guard let appId = self.appId, let userId = self.userId else { return }
+    print("[RampKit] 🔄 handleTransaction called for: \(transaction.productID)")
+    print("[RampKit]    - id: \(transaction.id)")
+    print("[RampKit]    - originalID: \(transaction.originalID)")
+    print("[RampKit]    - purchaseDate: \(transaction.purchaseDate)")
+
+    guard let appId = self.appId, let userId = self.userId else {
+      print("[RampKit] ❌ handleTransaction failed: appId=\(self.appId ?? "nil"), userId=\(self.userId ?? "nil")")
+      return
+    }
 
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -473,6 +581,8 @@ public class RampKitModule: Module {
       print("[RampKit] ⏭️ Transaction skipped (revoked): \(transaction.productID)")
       return
     }
+
+    print("[RampKit] ✅ Transaction is a new purchase, will send event")
 
     // All new purchases (including trials) are tracked as purchase_completed
     // The isTrial and offerType properties indicate trial status
@@ -636,7 +746,104 @@ public class RampKitModule: Module {
       print("[RampKit] Failed to send purchase event: \(error)")
     }
   }
-  
+
+  // MARK: - Manual Purchase Tracking (Fallback for Superwall/RevenueCat)
+
+  /// Track a purchase manually when you have the transaction IDs
+  /// Use this when Superwall or RevenueCat provides the transaction info
+  @available(iOS 15.0, *)
+  private func trackPurchaseCompletedManually(
+    productId: String,
+    transactionId: String?,
+    originalTransactionId: String?
+  ) async {
+    print("[RampKit] 📲 Manual purchase tracking called for: \(productId)")
+
+    guard let appId = self.appId, let userId = self.userId else {
+      print("[RampKit] ❌ Manual tracking failed: SDK not initialized (appId or userId missing)")
+      return
+    }
+
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+    var properties: [String: Any] = [
+      "productId": productId,
+      "purchaseDate": formatter.string(from: Date()),
+      "source": "manual" // Mark as manually tracked
+    ]
+
+    // Add transaction IDs if available
+    if let transactionId = transactionId {
+      properties["transactionId"] = transactionId
+    }
+    if let originalTransactionId = originalTransactionId {
+      properties["originalTransactionId"] = originalTransactionId
+    } else if let transactionId = transactionId {
+      // Use transactionId as originalTransactionId if not provided (first purchase)
+      properties["originalTransactionId"] = transactionId
+    }
+
+    // Try to get product info from StoreKit
+    if let product = await getProduct(for: productId) {
+      properties["amount"] = product.price
+      properties["currency"] = product.priceFormatStyle.currencyCode
+      properties["priceFormatted"] = product.displayPrice
+      properties["productType"] = mapProductType(product.type)
+
+      if let subscription = product.subscription {
+        properties["subscriptionPeriod"] = formatSubscriptionPeriod(subscription.subscriptionPeriod)
+        properties["subscriptionGroupId"] = subscription.subscriptionGroupID
+      }
+    }
+
+    // Get storefront
+    if let storefront = await Storefront.current {
+      properties["storefront"] = storefront.countryCode
+    }
+
+    print("[RampKit] 📤 Sending manual purchase_completed event...")
+    await sendPurchaseEvent(
+      appId: appId,
+      userId: userId,
+      eventName: "purchase_completed",
+      properties: properties
+    )
+  }
+
+  /// Track a purchase by looking up the latest transaction for a product
+  /// Use this when you only know the productId (Superwall doesn't always provide transaction IDs)
+  @available(iOS 15.0, *)
+  private func trackPurchaseFromProductId(productId: String) async {
+    print("[RampKit] 🔍 Looking up transaction for product: \(productId)")
+
+    // Try to find the latest transaction for this product
+    var latestTransaction: Transaction?
+
+    for await result in Transaction.currentEntitlements {
+      if case .verified(let transaction) = result {
+        if transaction.productID == productId {
+          if latestTransaction == nil || transaction.purchaseDate > latestTransaction!.purchaseDate {
+            latestTransaction = transaction
+          }
+        }
+      }
+    }
+
+    if let transaction = latestTransaction {
+      print("[RampKit] ✅ Found transaction for product: \(productId)")
+      await handleTransaction(transaction)
+    } else {
+      print("[RampKit] ⚠️ No transaction found for product, tracking manually: \(productId)")
+      // Fall back to manual tracking without transaction IDs
+      await trackPurchaseCompletedManually(
+        productId: productId,
+        transactionId: nil,
+        originalTransactionId: nil
+      )
+    }
+  }
+
   // MARK: - Device Helpers
   
   private func getDeviceModelIdentifier() -> String {

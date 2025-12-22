@@ -18,6 +18,8 @@ interface RampKitNativeModule {
     getNotificationPermissions(): Promise<NotificationPermissionResult>;
     startTransactionObserver(appId: string): Promise<void>;
     stopTransactionObserver(): Promise<void>;
+    trackPurchaseCompleted(productId: string, transactionId?: string, originalTransactionId?: string): Promise<void>;
+    trackPurchaseFromProduct(productId: string): Promise<void>;
 }
 export interface NativeDeviceInfo {
     appUserId: string;
@@ -162,4 +164,21 @@ export declare const TransactionObserver: {
      * Stop listening for purchase transactions
      */
     stop(): Promise<void>;
+    /**
+     * Manually track a purchase completion
+     * Use this when Superwall/RevenueCat reports a purchase but the automatic
+     * observer doesn't catch it (they finish transactions before we see them)
+     *
+     * @param productId - The product ID (e.g., "com.app.yearly")
+     * @param transactionId - Optional transaction ID if available
+     * @param originalTransactionId - Optional original transaction ID (for renewals)
+     */
+    trackPurchase(productId: string, transactionId?: string, originalTransactionId?: string): Promise<void>;
+    /**
+     * Track a purchase by looking up the product's latest transaction
+     * Use this when you only have the productId (common with Superwall)
+     *
+     * @param productId - The product ID to look up and track
+     */
+    trackPurchaseByProductId(productId: string): Promise<void>;
 };

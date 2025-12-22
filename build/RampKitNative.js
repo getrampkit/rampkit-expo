@@ -62,6 +62,8 @@ function createFallbackModule() {
         },
         async startTransactionObserver(_appId) { },
         async stopTransactionObserver() { },
+        async trackPurchaseCompleted(_productId, _transactionId, _originalTransactionId) { },
+        async trackPurchaseFromProduct(_productId) { },
     };
 }
 function generateFallbackUserId() {
@@ -283,6 +285,41 @@ exports.TransactionObserver = {
         }
         catch (e) {
             console.warn("[RampKit] Failed to stop transaction observer:", e);
+        }
+    },
+    /**
+     * Manually track a purchase completion
+     * Use this when Superwall/RevenueCat reports a purchase but the automatic
+     * observer doesn't catch it (they finish transactions before we see them)
+     *
+     * @param productId - The product ID (e.g., "com.app.yearly")
+     * @param transactionId - Optional transaction ID if available
+     * @param originalTransactionId - Optional original transaction ID (for renewals)
+     */
+    async trackPurchase(productId, transactionId, originalTransactionId) {
+        try {
+            console.log("[RampKit] Manually tracking purchase:", productId);
+            await RampKitNativeModule.trackPurchaseCompleted(productId, transactionId, originalTransactionId);
+            console.log("[RampKit] Purchase tracked successfully:", productId);
+        }
+        catch (e) {
+            console.warn("[RampKit] Failed to track purchase:", e);
+        }
+    },
+    /**
+     * Track a purchase by looking up the product's latest transaction
+     * Use this when you only have the productId (common with Superwall)
+     *
+     * @param productId - The product ID to look up and track
+     */
+    async trackPurchaseByProductId(productId) {
+        try {
+            console.log("[RampKit] Looking up and tracking purchase for:", productId);
+            await RampKitNativeModule.trackPurchaseFromProduct(productId);
+            console.log("[RampKit] Purchase lookup and tracking complete:", productId);
+        }
+        catch (e) {
+            console.warn("[RampKit] Failed to track purchase by product:", e);
         }
     },
 };

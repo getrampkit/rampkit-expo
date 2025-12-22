@@ -32,6 +32,10 @@ interface RampKitNativeModule {
   // Transaction Observer (StoreKit 2 / Google Play Billing)
   startTransactionObserver(appId: string): Promise<void>;
   stopTransactionObserver(): Promise<void>;
+
+  // Manual Purchase Tracking (Fallback for Superwall/RevenueCat)
+  trackPurchaseCompleted(productId: string, transactionId?: string, originalTransactionId?: string): Promise<void>;
+  trackPurchaseFromProduct(productId: string): Promise<void>;
 }
 
 // Native device info shape
@@ -163,6 +167,8 @@ function createFallbackModule(): RampKitNativeModule {
     },
     async startTransactionObserver(_appId: string): Promise<void> {},
     async stopTransactionObserver(): Promise<void> {},
+    async trackPurchaseCompleted(_productId: string, _transactionId?: string, _originalTransactionId?: string): Promise<void> {},
+    async trackPurchaseFromProduct(_productId: string): Promise<void> {},
   };
 }
 
@@ -402,6 +408,49 @@ export const TransactionObserver = {
       console.log("[RampKit] Transaction observer stopped");
     } catch (e) {
       console.warn("[RampKit] Failed to stop transaction observer:", e);
+    }
+  },
+
+  /**
+   * Manually track a purchase completion
+   * Use this when Superwall/RevenueCat reports a purchase but the automatic
+   * observer doesn't catch it (they finish transactions before we see them)
+   *
+   * @param productId - The product ID (e.g., "com.app.yearly")
+   * @param transactionId - Optional transaction ID if available
+   * @param originalTransactionId - Optional original transaction ID (for renewals)
+   */
+  async trackPurchase(
+    productId: string,
+    transactionId?: string,
+    originalTransactionId?: string
+  ): Promise<void> {
+    try {
+      console.log("[RampKit] Manually tracking purchase:", productId);
+      await RampKitNativeModule.trackPurchaseCompleted(
+        productId,
+        transactionId,
+        originalTransactionId
+      );
+      console.log("[RampKit] Purchase tracked successfully:", productId);
+    } catch (e) {
+      console.warn("[RampKit] Failed to track purchase:", e);
+    }
+  },
+
+  /**
+   * Track a purchase by looking up the product's latest transaction
+   * Use this when you only have the productId (common with Superwall)
+   *
+   * @param productId - The product ID to look up and track
+   */
+  async trackPurchaseByProductId(productId: string): Promise<void> {
+    try {
+      console.log("[RampKit] Looking up and tracking purchase for:", productId);
+      await RampKitNativeModule.trackPurchaseFromProduct(productId);
+      console.log("[RampKit] Purchase lookup and tracking complete:", productId);
+    } catch (e) {
+      console.warn("[RampKit] Failed to track purchase by product:", e);
     }
   },
 };
