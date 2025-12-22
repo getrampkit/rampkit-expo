@@ -483,18 +483,23 @@ public class RampKitModule: Module {
     return result
   }
 
-  /// Check all current entitlements and track any we haven't seen before
-  /// This catches purchases made by Superwall/RevenueCat before our observer started
+  /// Check ALL transactions (not just current entitlements) and track any we haven't seen before
+  /// This catches ALL purchases including expired/superseded ones made by Superwall/RevenueCat
   /// Returns a dictionary with the results for JavaScript logging
   ///
   /// IMPORTANT: "Already sent" means we previously sent this transaction to the backend
-  /// and received a successful HTTP 2xx response. The originalTransactionId is stored
+  /// and received a successful HTTP 2xx response. The transactionId is stored
   /// in UserDefaults ONLY after a successful send.
+  ///
+  /// NOTE: We use Transaction.all instead of Transaction.currentEntitlements because
+  /// currentEntitlements only returns ACTIVE entitlements. If a user purchases a subscription
+  /// and it expires, or if they upgrade (superseding the old transaction), currentEntitlements
+  /// will NOT include the original purchase. Transaction.all returns the complete history.
   @available(iOS 15.0, *)
   private func checkAndTrackCurrentEntitlements() async -> [String: Any] {
     print("[RampKit] ")
     print("[RampKit] ════════════════════════════════════════════════════════════")
-    print("[RampKit] 🔍 CHECKING ENTITLEMENTS FOR UNSENT PURCHASES")
+    print("[RampKit] 🔍 CHECKING ALL TRANSACTIONS FOR UNSENT PURCHASES")
     print("[RampKit] ════════════════════════════════════════════════════════════")
     print("[RampKit] ")
     print("[RampKit] 📚 Tracked transaction IDs in storage: \(trackedTransactionIds.count)")
@@ -518,11 +523,11 @@ public class RampKitModule: Module {
     var skippedReasons: [[String: Any]] = []
     var alreadyTrackedDetails: [[String: Any]] = []  // NEW: Details of already-tracked transactions
 
-    for await result in Transaction.currentEntitlements {
+    for await result in Transaction.all {
       foundCount += 1
 
       guard case .verified(let transaction) = result else {
-        print("[RampKit] ⚠️ Unverified entitlement skipped")
+        print("[RampKit] ⚠️ Unverified transaction skipped")
         skippedReasons.append(["productId": "unknown", "reason": "unverified"])
         continue
       }
@@ -545,7 +550,7 @@ public class RampKitModule: Module {
         txDetails["environment"] = transaction.environment.rawValue
       }
 
-      print("[RampKit] 📦 Found entitlement:")
+      print("[RampKit] 📦 Found transaction:")
       print("[RampKit]    - productId: \(transaction.productID)")
       print("[RampKit]    - transactionId: \(transactionId)")
       print("[RampKit]    - originalTransactionId: \(originalId)")
@@ -604,9 +609,9 @@ public class RampKitModule: Module {
 
     print("[RampKit] ")
     print("[RampKit] ════════════════════════════════════════════════════════════")
-    print("[RampKit] 📊 ENTITLEMENT CHECK SUMMARY")
+    print("[RampKit] 📊 TRANSACTION CHECK SUMMARY")
     print("[RampKit] ════════════════════════════════════════════════════════════")
-    print("[RampKit]    Total entitlements found:     \(foundCount)")
+    print("[RampKit]    Total transactions found:     \(foundCount)")
     print("[RampKit]    Already sent (HTTP 2xx):      \(trackedCount) (no action needed)")
     print("[RampKit]    Skipped (renewal/revoked):    \(skippedReasons.count) (backend gets via S2S)")
     print("[RampKit]    NEW events sent this session: \(newCount)")
@@ -1140,10 +1145,10 @@ public class RampKitModule: Module {
   private func trackPurchaseFromProductId(productId: String) async {
     print("[RampKit] 🔍 Looking up transaction for product: \(productId)")
 
-    // Try to find the latest transaction for this product
+    // Try to find the latest transaction for this product (check all transactions, not just current entitlements)
     var latestTransaction: Transaction?
 
-    for await result in Transaction.currentEntitlements {
+    for await result in Transaction.all {
       if case .verified(let transaction) = result {
         if transaction.productID == productId {
           if latestTransaction == nil || transaction.purchaseDate > latestTransaction!.purchaseDate {
