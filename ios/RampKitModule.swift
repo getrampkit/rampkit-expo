@@ -462,30 +462,22 @@ public class RampKitModule: Module {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-    // Determine event type based on transaction (matching iOS SDK logic)
-    let eventName: String
-    var properties: [String: Any] = [:]
+    // Skip renewals - backend gets these from App Store Server-to-Server notifications
+    if transaction.originalID != transaction.id {
+      print("[RampKit] ⏭️ Transaction skipped (renewal): \(transaction.productID)")
+      return
+    }
 
-    // Check revocation first (subscription_canceled)
+    // Skip revocations/cancellations - backend gets these from S2S notifications
     if transaction.revocationDate != nil {
-      eventName = "subscription_canceled"
-      if let reason = transaction.revocationReason {
-        properties["revocationReason"] = reason == .developerIssue ? "developerIssue" : "other"
-      }
-      properties["revocationDate"] = transaction.revocationDate.map { formatter.string(from: $0) }
+      print("[RampKit] ⏭️ Transaction skipped (revoked): \(transaction.productID)")
+      return
     }
-    // Check if this is a renewal (originalID != id)
-    else if transaction.originalID != transaction.id {
-      eventName = "subscription_renewed"
-    }
-    // Check if it's a trial or intro offer
-    else if let offerType = transaction.offerType, offerType == .introductory {
-      eventName = "trial_started"
-    }
-    // Default to purchase_completed
-    else {
-      eventName = "purchase_completed"
-    }
+
+    // All new purchases (including trials) are tracked as purchase_completed
+    // The isTrial and offerType properties indicate trial status
+    let eventName = "purchase_completed"
+    var properties: [String: Any] = [:]
 
     // Build properties (matching iOS SDK PurchaseEventDetails)
     properties["productId"] = transaction.productID
@@ -631,8 +623,8 @@ public class RampKitModule: Module {
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk", forHTTPHeaderField: "apikey")
-    request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU1NjQ0NjYsImV4cCI6MjA1MTE0MDQ2Nn0.5cNrph5LHmssNo39UKpULkC9n4OD5n6gsnTEQV-gwQk", forHTTPHeaderField: "Authorization")
+    request.setValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM2NTUsImV4cCI6MjA3NzY3OTY1NX0.d5XsIMGnia4n9Pou0IidipyyEfSlwpXFoeDBufMOEwE", forHTTPHeaderField: "apikey")
+    request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM2NTUsImV4cCI6MjA3NzY3OTY1NX0.d5XsIMGnia4n9Pou0IidipyyEfSlwpXFoeDBufMOEwE", forHTTPHeaderField: "Authorization")
     
     do {
       request.httpBody = try JSONSerialization.data(withJSONObject: event)
