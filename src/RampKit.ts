@@ -83,7 +83,12 @@ export class RampKitCore {
 
       // Step 5: Start transaction observer for automatic purchase tracking
       console.log("[RampKit] Configure: Starting transaction observer...");
-      await TransactionObserver.start(config.appId);
+      try {
+        await TransactionObserver.start(config.appId);
+        console.log("[RampKit] Configure: Transaction observer setup complete");
+      } catch (txError) {
+        console.error("[RampKit] Configure: Transaction observer failed:", txError);
+      }
 
       this.initialized = true;
     } catch (e) {

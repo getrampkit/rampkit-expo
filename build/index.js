@@ -7,7 +7,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CAPABILITIES = exports.SDK_VERSION = exports.TransactionObserver = exports.Notifications = exports.StoreReview = exports.Haptics = exports.RampKitNative = exports.buildRampKitContext = exports.getSessionStartTime = exports.getSessionDurationSeconds = exports.collectDeviceInfo = exports.eventManager = exports.getRampKitUserId = exports.RampKit = void 0;
+exports.CAPABILITIES = exports.SDK_VERSION = exports.isNativeModuleAvailable = exports.TransactionObserver = exports.Notifications = exports.StoreReview = exports.Haptics = exports.RampKitNative = exports.buildRampKitContext = exports.getSessionStartTime = exports.getSessionDurationSeconds = exports.collectDeviceInfo = exports.eventManager = exports.getRampKitUserId = exports.RampKit = void 0;
 const RampKit_1 = require("./RampKit");
 // Main SDK singleton instance
 exports.RampKit = RampKit_1.RampKitCore.instance;
@@ -32,6 +32,7 @@ Object.defineProperty(exports, "Haptics", { enumerable: true, get: function () {
 Object.defineProperty(exports, "StoreReview", { enumerable: true, get: function () { return RampKitNative_2.StoreReview; } });
 Object.defineProperty(exports, "Notifications", { enumerable: true, get: function () { return RampKitNative_2.Notifications; } });
 Object.defineProperty(exports, "TransactionObserver", { enumerable: true, get: function () { return RampKitNative_2.TransactionObserver; } });
+Object.defineProperty(exports, "isNativeModuleAvailable", { enumerable: true, get: function () { return RampKitNative_2.isNativeModuleAvailable; } });
 // Export constants
 var constants_1 = require("./constants");
 Object.defineProperty(exports, "SDK_VERSION", { enumerable: true, get: function () { return constants_1.SDK_VERSION; } });

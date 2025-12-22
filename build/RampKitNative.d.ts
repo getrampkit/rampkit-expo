@@ -16,7 +16,7 @@ interface RampKitNativeModule {
     getStoreUrl(): Promise<string | null>;
     requestNotificationPermissions(options?: NotificationOptions): Promise<NotificationPermissionResult>;
     getNotificationPermissions(): Promise<NotificationPermissionResult>;
-    startTransactionObserver(appId: string): Promise<void>;
+    startTransactionObserver(appId: string): Promise<TransactionObserverResult>;
     stopTransactionObserver(): Promise<void>;
     trackPurchaseCompleted(productId: string, transactionId?: string, originalTransactionId?: string): Promise<void>;
     trackPurchaseFromProduct(productId: string): Promise<void>;
@@ -86,9 +86,26 @@ export interface NotificationPermissionResult {
     };
     error?: string;
 }
+export interface TransactionObserverResult {
+    configured: boolean;
+    appId: string;
+    userId: string;
+    previouslyTrackedCount: number;
+    iOSVersion: string;
+    listenerStarted: boolean;
+    entitlementCheck?: {
+        totalFound: number;
+        alreadyTracked: number;
+        newPurchases: number;
+        productIds: string[];
+        newProductIds: string[];
+    };
+    error?: string;
+}
 export type ImpactStyle = "light" | "medium" | "heavy" | "rigid" | "soft";
 export type NotificationType = "success" | "warning" | "error";
 declare let RampKitNativeModule: RampKitNativeModule;
+export declare function isNativeModuleAvailable(): boolean;
 export default RampKitNativeModule;
 export declare function getDeviceInfo(): Promise<NativeDeviceInfo>;
 export declare function getUserId(): Promise<string>;
@@ -159,7 +176,7 @@ export declare const TransactionObserver: {
      * Automatically tracks purchases to the RampKit backend
      * @param appId - The RampKit app ID
      */
-    start(appId: string): Promise<void>;
+    start(appId: string): Promise<TransactionObserverResult | null>;
     /**
      * Stop listening for purchase transactions
      */

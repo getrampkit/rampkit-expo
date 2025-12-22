@@ -63,7 +63,13 @@ class RampKitCore {
             EventManager_1.eventManager.trackAppSessionStarted(this.deviceInfo.isFirstLaunch, this.deviceInfo.launchCount);
             // Step 5: Start transaction observer for automatic purchase tracking
             console.log("[RampKit] Configure: Starting transaction observer...");
-            await RampKitNative_1.TransactionObserver.start(config.appId);
+            try {
+                await RampKitNative_1.TransactionObserver.start(config.appId);
+                console.log("[RampKit] Configure: Transaction observer setup complete");
+            }
+            catch (txError) {
+                console.error("[RampKit] Configure: Transaction observer failed:", txError);
+            }
             this.initialized = true;
         }
         catch (e) {

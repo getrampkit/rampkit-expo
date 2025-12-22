@@ -103,8 +103,8 @@ public class RampKitModule: Module {
     // Transaction Observer (StoreKit 2)
     // ============================================================================
 
-    AsyncFunction("startTransactionObserver") { (appId: String) in
-      self.startTransactionObserver(appId: appId)
+    AsyncFunction("startTransactionObserver") { (appId: String) -> [String: Any] in
+      return await self.startTransactionObserver(appId: appId)
     }
 
     AsyncFunction("stopTransactionObserver") { () in
@@ -432,7 +432,8 @@ public class RampKitModule: Module {
   // MARK: - StoreKit 2 Transaction Observer
 
   /// Called from JavaScript - sets appId and IMMEDIATELY checks for purchases we may have missed
-  private func startTransactionObserver(appId: String) {
+  /// Returns debug info for JavaScript logging
+  private func startTransactionObserver(appId: String) async -> [String: Any] {
     self.appId = appId
     self.userId = getOrCreateUserId()
     self.isConfigured = true
@@ -440,29 +441,43 @@ public class RampKitModule: Module {
     print("[RampKit] ✅ Transaction observer configured with appId: \(appId)")
     print("[RampKit] 📊 Already tracked \(trackedTransactionIds.count) transactions")
 
+    var result: [String: Any] = [
+      "configured": true,
+      "appId": appId,
+      "userId": self.userId ?? "unknown",
+      "previouslyTrackedCount": trackedTransactionIds.count,
+      "iOSVersion": UIDevice.current.systemVersion
+    ]
+
     if #available(iOS 15.0, *) {
       // CRITICAL: Check current entitlements for any purchases we missed
       // This is the KEY mechanism for catching Superwall/RevenueCat purchases
-      Task {
-        await self.checkAndTrackCurrentEntitlements()
-      }
+      let entitlementResult = await self.checkAndTrackCurrentEntitlements()
+      result["entitlementCheck"] = entitlementResult
 
       // Also start listening for future transactions
-      Task {
-        await self.startTransactionUpdatesListener()
-      }
+      await self.startTransactionUpdatesListener()
+      result["listenerStarted"] = true
+    } else {
+      result["error"] = "iOS 15+ required for StoreKit 2"
+      result["listenerStarted"] = false
     }
+
+    return result
   }
 
   /// Check all current entitlements and track any we haven't seen before
   /// This catches purchases made by Superwall/RevenueCat before our observer started
+  /// Returns a dictionary with the results for JavaScript logging
   @available(iOS 15.0, *)
-  private func checkAndTrackCurrentEntitlements() async {
+  private func checkAndTrackCurrentEntitlements() async -> [String: Any] {
     print("[RampKit] 🔍 Checking current entitlements for missed purchases...")
 
     var foundCount = 0
     var trackedCount = 0
     var newCount = 0
+    var productIds: [String] = []
+    var newProductIds: [String] = []
 
     for await result in Transaction.currentEntitlements {
       foundCount += 1
@@ -473,6 +488,7 @@ public class RampKitModule: Module {
       }
 
       let originalId = String(transaction.originalID)
+      productIds.append(transaction.productID)
       print("[RampKit] 📦 Found entitlement: \(transaction.productID), originalID: \(originalId)")
 
       // Check if we've already tracked this transaction
@@ -484,6 +500,7 @@ public class RampKitModule: Module {
 
       // NEW transaction we haven't seen!
       newCount += 1
+      newProductIds.append(transaction.productID)
       print("[RampKit] 🆕 NEW purchase detected: \(transaction.productID)")
 
       // Track it
@@ -498,6 +515,14 @@ public class RampKitModule: Module {
     print("[RampKit]    - Total found: \(foundCount)")
     print("[RampKit]    - Already tracked: \(trackedCount)")
     print("[RampKit]    - NEW (sent events): \(newCount)")
+
+    return [
+      "totalFound": foundCount,
+      "alreadyTracked": trackedCount,
+      "newPurchases": newCount,
+      "productIds": productIds,
+      "newProductIds": newProductIds
+    ]
   }
 
   /// Start listening for Transaction.updates (for future purchases)

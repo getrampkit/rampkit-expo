@@ -30,7 +30,7 @@ interface RampKitNativeModule {
   getNotificationPermissions(): Promise<NotificationPermissionResult>;
   
   // Transaction Observer (StoreKit 2 / Google Play Billing)
-  startTransactionObserver(appId: string): Promise<void>;
+  startTransactionObserver(appId: string): Promise<TransactionObserverResult>;
   stopTransactionObserver(): Promise<void>;
 
   // Manual Purchase Tracking (Fallback for Superwall/RevenueCat)
@@ -108,6 +108,24 @@ export interface NotificationPermissionResult {
   error?: string;
 }
 
+// Transaction observer result for debugging
+export interface TransactionObserverResult {
+  configured: boolean;
+  appId: string;
+  userId: string;
+  previouslyTrackedCount: number;
+  iOSVersion: string;
+  listenerStarted: boolean;
+  entitlementCheck?: {
+    totalFound: number;
+    alreadyTracked: number;
+    newPurchases: number;
+    productIds: string[];
+    newProductIds: string[];
+  };
+  error?: string;
+}
+
 // Impact feedback styles
 export type ImpactStyle = "light" | "medium" | "heavy" | "rigid" | "soft";
 
@@ -116,14 +134,23 @@ export type NotificationType = "success" | "warning" | "error";
 
 // Get the native module
 let RampKitNativeModule: RampKitNativeModule;
+let isNativeModuleLoaded = false;
 
 try {
   RampKitNativeModule = requireNativeModule("RampKit");
+  isNativeModuleLoaded = true;
+  console.log("[RampKit] ✅ Native module loaded successfully");
 } catch (e) {
   console.warn(
-    "[RampKit] Native module not available. Using JavaScript fallback."
+    "[RampKit] ⚠️ Native module not available. Using JavaScript fallback.",
+    e
   );
   RampKitNativeModule = createFallbackModule();
+}
+
+// Export for debugging
+export function isNativeModuleAvailable(): boolean {
+  return isNativeModuleLoaded;
 }
 
 // Fallback module for when native module is not available
@@ -165,7 +192,17 @@ function createFallbackModule(): RampKitNativeModule {
     async getNotificationPermissions(): Promise<NotificationPermissionResult> {
       return { granted: false, status: "denied", canAskAgain: false };
     },
-    async startTransactionObserver(_appId: string): Promise<void> {},
+    async startTransactionObserver(_appId: string): Promise<TransactionObserverResult> {
+      return {
+        configured: false,
+        appId: _appId,
+        userId: "fallback",
+        previouslyTrackedCount: 0,
+        iOSVersion: "N/A",
+        listenerStarted: false,
+        error: "Native module not available - using fallback"
+      };
+    },
     async stopTransactionObserver(): Promise<void> {},
     async trackPurchaseCompleted(_productId: string, _transactionId?: string, _originalTransactionId?: string): Promise<void> {},
     async trackPurchaseFromProduct(_productId: string): Promise<void> {},
@@ -390,12 +427,40 @@ export const TransactionObserver = {
    * Automatically tracks purchases to the RampKit backend
    * @param appId - The RampKit app ID
    */
-  async start(appId: string): Promise<void> {
+  async start(appId: string): Promise<TransactionObserverResult | null> {
+    console.log("[RampKit] 🚀 TransactionObserver.start() called");
+    console.log("[RampKit]    - appId:", appId);
+    console.log("[RampKit]    - Native module loaded:", isNativeModuleLoaded);
+
     try {
-      await RampKitNativeModule.startTransactionObserver(appId);
-      console.log("[RampKit] Transaction observer started");
+      console.log("[RampKit] 📡 Calling native startTransactionObserver...");
+      const result = await RampKitNativeModule.startTransactionObserver(appId);
+
+      // Log the full result for debugging
+      console.log("[RampKit] ✅ Transaction observer result:");
+      console.log("[RampKit]    - configured:", result.configured);
+      console.log("[RampKit]    - userId:", result.userId);
+      console.log("[RampKit]    - iOSVersion:", result.iOSVersion);
+      console.log("[RampKit]    - previouslyTrackedCount:", result.previouslyTrackedCount);
+      console.log("[RampKit]    - listenerStarted:", result.listenerStarted);
+
+      if (result.entitlementCheck) {
+        console.log("[RampKit] 📊 Entitlement check results:");
+        console.log("[RampKit]    - totalFound:", result.entitlementCheck.totalFound);
+        console.log("[RampKit]    - alreadyTracked:", result.entitlementCheck.alreadyTracked);
+        console.log("[RampKit]    - newPurchases:", result.entitlementCheck.newPurchases);
+        console.log("[RampKit]    - productIds:", result.entitlementCheck.productIds);
+        console.log("[RampKit]    - newProductIds:", result.entitlementCheck.newProductIds);
+      }
+
+      if (result.error) {
+        console.warn("[RampKit] ⚠️ Error:", result.error);
+      }
+
+      return result;
     } catch (e) {
-      console.warn("[RampKit] Failed to start transaction observer:", e);
+      console.warn("[RampKit] ❌ Failed to start transaction observer:", e);
+      return null;
     }
   },
 
