@@ -352,8 +352,8 @@ export class RampKitCore {
         rampkitContext,
         navigation,
         onOnboardingFinished: (payload?: any) => {
-          // Track onboarding completed (once per user) - trigger: finished
-          eventManager.trackOnboardingCompletedOnce(
+          // Track onboarding completed - trigger: finished
+          eventManager.trackOnboardingCompleted(
             "finished",
             screens.length,
             screens.length,
@@ -364,8 +364,8 @@ export class RampKitCore {
           } catch (_) {}
         },
         onShowPaywall: (payload?: any) => {
-          // Track onboarding completed (once per user) - trigger: paywall_shown
-          eventManager.trackOnboardingCompletedOnce(
+          // Track onboarding completed - trigger: paywall_shown
+          eventManager.trackOnboardingCompleted(
             "paywall_shown",
             screens.length, // We don't know exact step, use total
             screens.length,
@@ -395,8 +395,8 @@ export class RampKitCore {
           );
         },
         onCloseAction: (screenIndex: number, _screenId: string) => {
-          // Track onboarding completed (once per user) - trigger: closed
-          eventManager.trackOnboardingCompletedOnce(
+          // Track onboarding completed - trigger: closed
+          eventManager.trackOnboardingCompleted(
             "closed",
             screenIndex + 1,
             screens.length,

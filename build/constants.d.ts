@@ -14,7 +14,6 @@ export declare const STORAGE_KEYS: {
     readonly LAUNCH_COUNT: "rk_launch_count";
     readonly LAST_LAUNCH: "rk_last_launch";
     readonly ONBOARDING_RESPONSES: "rk_onboarding_responses";
-    readonly ONBOARDING_COMPLETED: "rk_onboarding_completed";
 };
 export declare const CAPABILITIES: readonly ["onboarding", "paywall_event_receiver", "haptic_feedback", "push_notifications"];
 export declare const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM2NTUsImV4cCI6MjA3NzY3OTY1NX0.d5XsIMGnia4n9Pou0IidipyyEfSlwpXFoeDBufMOEwE";

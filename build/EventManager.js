@@ -6,7 +6,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventManager = exports.eventManager = void 0;
 const constants_1 = require("./constants");
-const RampKitNative_1 = require("./RampKitNative");
 /**
  * Generate a UUID v4 using Math.random
  * This is sufficient for event IDs - no crypto dependency needed
@@ -224,46 +223,10 @@ class EventManager {
         this.endOnboardingTracking();
     }
     // ============================================================================
-    // Onboarding Completion (Once Per User)
+    // Onboarding Completion
     // ============================================================================
     /**
-     * Check if onboarding has already been marked as completed
-     */
-    async hasOnboardingBeenCompleted() {
-        try {
-            const value = await (0, RampKitNative_1.getStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_COMPLETED);
-            return value === "true";
-        }
-        catch (_a) {
-            return false;
-        }
-    }
-    /**
-     * Mark onboarding as completed in persistent storage
-     */
-    async markOnboardingAsCompleted() {
-        try {
-            await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_COMPLETED, "true");
-            console.log("[RampKit] EventManager: onboarding marked as completed (persisted)");
-        }
-        catch (error) {
-            console.warn("[RampKit] EventManager: failed to persist onboarding completion:", error);
-        }
-    }
-    /**
-     * Reset onboarding completion status (useful for testing or user reset)
-     */
-    async resetOnboardingCompletionStatus() {
-        try {
-            await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_COMPLETED, "");
-            console.log("[RampKit] EventManager: onboarding completion status reset");
-        }
-        catch (error) {
-            console.warn("[RampKit] EventManager: failed to reset onboarding completion:", error);
-        }
-    }
-    /**
-     * Track onboarding completed event - fires ONCE per user
+     * Track onboarding completed event
      * Called when:
      * 1. User completes the onboarding flow (onboarding-finished action)
      * 2. User closes the onboarding (close action)
@@ -274,16 +237,9 @@ class EventManager {
      * @param totalSteps - Total number of steps in the onboarding
      * @param onboardingId - The onboarding ID
      */
-    async trackOnboardingCompletedOnce(trigger, completedSteps, totalSteps, onboardingId) {
-        // Check if already completed - skip if so
-        const alreadyCompleted = await this.hasOnboardingBeenCompleted();
-        if (alreadyCompleted) {
-            console.log(`[RampKit] EventManager: onboarding_completed already sent, skipping (trigger: ${trigger})`);
-            return;
-        }
-        // Mark as completed BEFORE sending to prevent race conditions
-        await this.markOnboardingAsCompleted();
+    trackOnboardingCompleted(trigger, completedSteps, totalSteps, onboardingId) {
         const timeToCompleteSeconds = this.getOnboardingDurationSeconds();
+        console.log(`[RampKit] EventManager: 📊 onboarding_completed`, `\n  trigger: ${trigger}`, `\n  onboardingId: ${onboardingId || this.currentOnboardingId}`, `\n  timeToCompleteSeconds: ${timeToCompleteSeconds}`);
         this.track("onboarding_completed", {
             onboardingId: onboardingId || this.currentOnboardingId,
             timeToCompleteSeconds,
@@ -292,7 +248,6 @@ class EventManager {
             trigger,
         });
         this.endOnboardingTracking();
-        console.log(`[RampKit] EventManager: 📊 onboarding_completed sent (trigger: ${trigger})`);
     }
     /**
      * Track notification response
@@ -364,8 +319,6 @@ class EventManager {
         this.onboardingStartTime = null;
         this.currentOnboardingId = null;
         this.initialized = false;
-        // Reset onboarding completion status so it can fire again for new user
-        this.resetOnboardingCompletionStatus();
     }
 }
 exports.EventManager = EventManager;

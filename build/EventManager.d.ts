@@ -76,19 +76,7 @@ declare class EventManager {
      */
     trackOnboardingAbandoned(reason: string, lastScreenName?: string, onboardingId?: string): void;
     /**
-     * Check if onboarding has already been marked as completed
-     */
-    hasOnboardingBeenCompleted(): Promise<boolean>;
-    /**
-     * Mark onboarding as completed in persistent storage
-     */
-    private markOnboardingAsCompleted;
-    /**
-     * Reset onboarding completion status (useful for testing or user reset)
-     */
-    resetOnboardingCompletionStatus(): Promise<void>;
-    /**
-     * Track onboarding completed event - fires ONCE per user
+     * Track onboarding completed event
      * Called when:
      * 1. User completes the onboarding flow (onboarding-finished action)
      * 2. User closes the onboarding (close action)
@@ -99,7 +87,7 @@ declare class EventManager {
      * @param totalSteps - Total number of steps in the onboarding
      * @param onboardingId - The onboarding ID
      */
-    trackOnboardingCompletedOnce(trigger: string, completedSteps?: number, totalSteps?: number, onboardingId?: string): Promise<void>;
+    trackOnboardingCompleted(trigger: string, completedSteps?: number, totalSteps?: number, onboardingId?: string): void;
     /**
      * Track notification response
      */

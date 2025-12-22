@@ -289,16 +289,16 @@ class RampKitCore {
                 navigation,
                 onOnboardingFinished: (payload) => {
                     var _a;
-                    // Track onboarding completed (once per user) - trigger: finished
-                    EventManager_1.eventManager.trackOnboardingCompletedOnce("finished", screens.length, screens.length, onboardingId);
+                    // Track onboarding completed - trigger: finished
+                    EventManager_1.eventManager.trackOnboardingCompleted("finished", screens.length, screens.length, onboardingId);
                     try {
                         (_a = this.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(this, payload);
                     }
                     catch (_) { }
                 },
                 onShowPaywall: (payload) => {
-                    // Track onboarding completed (once per user) - trigger: paywall_shown
-                    EventManager_1.eventManager.trackOnboardingCompletedOnce("paywall_shown", screens.length, // We don't know exact step, use total
+                    // Track onboarding completed - trigger: paywall_shown
+                    EventManager_1.eventManager.trackOnboardingCompleted("paywall_shown", screens.length, // We don't know exact step, use total
                     screens.length, onboardingId);
                     // Call the original callback
                     const paywallCallback = (opts === null || opts === void 0 ? void 0 : opts.onShowPaywall) || (opts === null || opts === void 0 ? void 0 : opts.showPaywall) || this.onShowPaywall;
@@ -315,8 +315,8 @@ class RampKitCore {
                     EventManager_1.eventManager.trackNotificationsResponse(granted ? "granted" : "denied");
                 },
                 onCloseAction: (screenIndex, _screenId) => {
-                    // Track onboarding completed (once per user) - trigger: closed
-                    EventManager_1.eventManager.trackOnboardingCompletedOnce("closed", screenIndex + 1, screens.length, onboardingId);
+                    // Track onboarding completed - trigger: closed
+                    EventManager_1.eventManager.trackOnboardingCompleted("closed", screenIndex + 1, screens.length, onboardingId);
                 },
             });
         }

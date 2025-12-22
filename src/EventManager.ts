@@ -13,8 +13,7 @@ import {
   PurchaseStartedProperties,
   PurchaseRestoredProperties,
 } from "./types";
-import { ENDPOINTS, SUPABASE_ANON_KEY, STORAGE_KEYS } from "./constants";
-import { getStoredValue, setStoredValue } from "./RampKitNative";
+import { ENDPOINTS, SUPABASE_ANON_KEY } from "./constants";
 
 /**
  * Generate a UUID v4 using Math.random
@@ -278,47 +277,11 @@ class EventManager {
   }
 
   // ============================================================================
-  // Onboarding Completion (Once Per User)
+  // Onboarding Completion
   // ============================================================================
 
   /**
-   * Check if onboarding has already been marked as completed
-   */
-  async hasOnboardingBeenCompleted(): Promise<boolean> {
-    try {
-      const value = await getStoredValue(STORAGE_KEYS.ONBOARDING_COMPLETED);
-      return value === "true";
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Mark onboarding as completed in persistent storage
-   */
-  private async markOnboardingAsCompleted(): Promise<void> {
-    try {
-      await setStoredValue(STORAGE_KEYS.ONBOARDING_COMPLETED, "true");
-      console.log("[RampKit] EventManager: onboarding marked as completed (persisted)");
-    } catch (error) {
-      console.warn("[RampKit] EventManager: failed to persist onboarding completion:", error);
-    }
-  }
-
-  /**
-   * Reset onboarding completion status (useful for testing or user reset)
-   */
-  async resetOnboardingCompletionStatus(): Promise<void> {
-    try {
-      await setStoredValue(STORAGE_KEYS.ONBOARDING_COMPLETED, "");
-      console.log("[RampKit] EventManager: onboarding completion status reset");
-    } catch (error) {
-      console.warn("[RampKit] EventManager: failed to reset onboarding completion:", error);
-    }
-  }
-
-  /**
-   * Track onboarding completed event - fires ONCE per user
+   * Track onboarding completed event
    * Called when:
    * 1. User completes the onboarding flow (onboarding-finished action)
    * 2. User closes the onboarding (close action)
@@ -329,23 +292,19 @@ class EventManager {
    * @param totalSteps - Total number of steps in the onboarding
    * @param onboardingId - The onboarding ID
    */
-  async trackOnboardingCompletedOnce(
+  trackOnboardingCompleted(
     trigger: string,
     completedSteps?: number,
     totalSteps?: number,
     onboardingId?: string
-  ): Promise<void> {
-    // Check if already completed - skip if so
-    const alreadyCompleted = await this.hasOnboardingBeenCompleted();
-    if (alreadyCompleted) {
-      console.log(`[RampKit] EventManager: onboarding_completed already sent, skipping (trigger: ${trigger})`);
-      return;
-    }
-
-    // Mark as completed BEFORE sending to prevent race conditions
-    await this.markOnboardingAsCompleted();
-
+  ): void {
     const timeToCompleteSeconds = this.getOnboardingDurationSeconds();
+    console.log(
+      `[RampKit] EventManager: 📊 onboarding_completed`,
+      `\n  trigger: ${trigger}`,
+      `\n  onboardingId: ${onboardingId || this.currentOnboardingId}`,
+      `\n  timeToCompleteSeconds: ${timeToCompleteSeconds}`
+    );
     this.track("onboarding_completed", {
       onboardingId: onboardingId || this.currentOnboardingId,
       timeToCompleteSeconds,
@@ -355,7 +314,6 @@ class EventManager {
     });
 
     this.endOnboardingTracking();
-    console.log(`[RampKit] EventManager: 📊 onboarding_completed sent (trigger: ${trigger})`);
   }
 
   /**
@@ -468,9 +426,6 @@ class EventManager {
     this.onboardingStartTime = null;
     this.currentOnboardingId = null;
     this.initialized = false;
-
-    // Reset onboarding completion status so it can fire again for new user
-    this.resetOnboardingCompletionStatus();
   }
 }
 
