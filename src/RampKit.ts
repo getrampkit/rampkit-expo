@@ -378,6 +378,8 @@ export class RampKitCore {
             screens.length,
             onboardingId
           );
+          // Auto-recheck transactions after paywall shown (catches purchases made during onboarding)
+          TransactionObserver.recheck().catch(() => {});
           // Call the original callback
           const paywallCallback = opts?.onShowPaywall || opts?.showPaywall || this.onShowPaywall;
           try {

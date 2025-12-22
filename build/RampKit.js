@@ -308,6 +308,8 @@ class RampKitCore {
                     // Track onboarding completed - trigger: paywall_shown
                     EventManager_1.eventManager.trackOnboardingCompleted("paywall_shown", screens.length, // We don't know exact step, use total
                     screens.length, onboardingId);
+                    // Auto-recheck transactions after paywall shown (catches purchases made during onboarding)
+                    RampKitNative_1.TransactionObserver.recheck().catch(() => { });
                     // Call the original callback
                     const paywallCallback = (opts === null || opts === void 0 ? void 0 : opts.onShowPaywall) || (opts === null || opts === void 0 ? void 0 : opts.showPaywall) || this.onShowPaywall;
                     try {

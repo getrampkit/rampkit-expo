@@ -553,28 +553,32 @@ public class RampKitModule: Module {
 
       // Check if we've already tracked this transaction
       // "Tracked" means we successfully sent a purchase_completed event to the backend
-      // and received an HTTP 2xx response. We store the originalTransactionId after success.
-      if trackedTransactionIds.contains(originalId) {
+      // and received an HTTP 2xx response. We store the transactionId after success.
+      // NOTE: We track by transactionId (not originalTransactionId) so renewals are also sent.
+      if trackedTransactionIds.contains(transactionId) {
         trackedCount += 1
         txDetails["status"] = "already_sent"
         alreadyTrackedDetails.append(txDetails)
         print("[RampKit]    ✅ STATUS: ALREADY SENT TO BACKEND")
-        print("[RampKit]       (originalTransactionId \(originalId) is in our sent-transactions storage)")
+        print("[RampKit]       (transactionId \(transactionId) is in our sent-transactions storage)")
         print("[RampKit]       This means we previously sent a purchase_completed event")
         print("[RampKit]       and received a successful HTTP 2xx response.")
         print("[RampKit] ")
         continue
       }
 
-      // Skip renewals and revocations
-      guard transaction.originalID == transaction.id,
-            transaction.revocationDate == nil else {
-        let reason = transaction.revocationDate != nil ? "revoked" : "renewal"
+      // Skip revocations only (NOT renewals - we want to track renewals too!)
+      if transaction.revocationDate != nil {
         txDetails["status"] = "skipped"
-        txDetails["reason"] = reason
+        txDetails["reason"] = "revoked"
         skippedReasons.append(txDetails)
-        print("[RampKit] ⏭️ STATUS: Skipped (\(reason))")
+        print("[RampKit] ⏭️ STATUS: Skipped (revoked)")
         continue
+      }
+
+      // Log if this is a renewal
+      if transaction.originalID != transaction.id {
+        print("[RampKit]    ℹ️  This is a RENEWAL (originalID != transactionID)")
       }
 
       // NEW transaction we haven't seen!
@@ -588,10 +592,10 @@ public class RampKitModule: Module {
 
       // Only mark as tracked if send succeeded
       if let status = sendResult["status"] as? String, status == "sent" {
-        trackedTransactionIds.insert(originalId)
+        trackedTransactionIds.insert(transactionId)
         saveTrackedTransactions()
         print("[RampKit] ✅ Event sent successfully! HTTP status: \(sendResult["httpStatus"] ?? "unknown")")
-        print("[RampKit] ✅ Marked originalTransactionId \(originalId) as tracked")
+        print("[RampKit] ✅ Marked transactionId \(transactionId) as tracked")
       } else {
         print("[RampKit] ❌ Send failed: \(sendResult["error"] ?? "unknown error")")
         print("[RampKit] ⚠️ Will retry on next app launch")
@@ -645,39 +649,38 @@ public class RampKitModule: Module {
           continue
         }
 
+        let transactionId = String(transaction.id)
         let originalId = String(transaction.originalID)
 
-        // Skip if already tracked
-        if self.trackedTransactionIds.contains(originalId) {
-          print("[RampKit] ✓ Transaction.updates: Already tracked \(transaction.productID)")
+        // Skip if already tracked (by transactionId, not originalId - so renewals are tracked)
+        if self.trackedTransactionIds.contains(transactionId) {
+          print("[RampKit] ✓ Transaction.updates: Already tracked \(transaction.productID) (txId: \(transactionId))")
           await transaction.finish()
           continue
         }
 
-        // Skip renewals - backend gets these from App Store S2S notifications
-        if transaction.originalID != transaction.id {
-          print("[RampKit] ⏭️ Transaction.updates: skipped (renewal) \(transaction.productID)")
-          await transaction.finish()
-          continue
-        }
-
-        // Skip revocations - backend gets these from S2S notifications
+        // Skip revocations only (NOT renewals - we want to track renewals!)
         if transaction.revocationDate != nil {
           print("[RampKit] ⏭️ Transaction.updates: skipped (revoked) \(transaction.productID)")
           await transaction.finish()
           continue
         }
 
-        print("[RampKit] 🆕 Transaction.updates: NEW purchase \(transaction.productID)")
+        // Log if this is a renewal
+        if transaction.originalID != transaction.id {
+          print("[RampKit] 🔄 Transaction.updates: RENEWAL detected for \(transaction.productID)")
+        }
+
+        print("[RampKit] 🆕 Transaction.updates: NEW transaction \(transaction.productID) (txId: \(transactionId))")
 
         // Track it and check result
         let sendResult = await self.handleTransactionWithResult(transaction)
 
-        // Only mark as tracked if send succeeded
+        // Only mark as tracked if send succeeded (use transactionId for renewals support)
         if let status = sendResult["status"] as? String, status == "sent" {
-          self.trackedTransactionIds.insert(originalId)
+          self.trackedTransactionIds.insert(transactionId)
           self.saveTrackedTransactions()
-          print("[RampKit] ✅ Transaction.updates: Sent and tracked \(transaction.productID)")
+          print("[RampKit] ✅ Transaction.updates: Sent and tracked \(transaction.productID) (txId: \(transactionId))")
         } else {
           print("[RampKit] ⚠️ Transaction.updates: Send failed, will retry \(transaction.productID)")
         }
