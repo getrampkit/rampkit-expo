@@ -486,10 +486,25 @@ public class RampKitModule: Module {
   /// Check all current entitlements and track any we haven't seen before
   /// This catches purchases made by Superwall/RevenueCat before our observer started
   /// Returns a dictionary with the results for JavaScript logging
+  ///
+  /// IMPORTANT: "Already sent" means we previously sent this transaction to the backend
+  /// and received a successful HTTP 2xx response. The originalTransactionId is stored
+  /// in UserDefaults ONLY after a successful send.
   @available(iOS 15.0, *)
   private func checkAndTrackCurrentEntitlements() async -> [String: Any] {
-    print("[RampKit] 🔍 Checking current entitlements for missed purchases...")
-    print("[RampKit] 📚 Currently have \(trackedTransactionIds.count) tracked transaction IDs in storage")
+    print("[RampKit] ")
+    print("[RampKit] ════════════════════════════════════════════════════════════")
+    print("[RampKit] 🔍 CHECKING ENTITLEMENTS FOR UNSENT PURCHASES")
+    print("[RampKit] ════════════════════════════════════════════════════════════")
+    print("[RampKit] ")
+    print("[RampKit] 📚 Tracked transaction IDs in storage: \(trackedTransactionIds.count)")
+    if !trackedTransactionIds.isEmpty {
+      print("[RampKit]    These IDs were SUCCESSFULLY sent to backend (HTTP 2xx):")
+      for id in trackedTransactionIds {
+        print("[RampKit]    - \(id)")
+      }
+    }
+    print("[RampKit] ")
 
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -537,11 +552,17 @@ public class RampKitModule: Module {
       print("[RampKit]    - purchaseDate: \(formatter.string(from: transaction.purchaseDate))")
 
       // Check if we've already tracked this transaction
+      // "Tracked" means we successfully sent a purchase_completed event to the backend
+      // and received an HTTP 2xx response. We store the originalTransactionId after success.
       if trackedTransactionIds.contains(originalId) {
         trackedCount += 1
         txDetails["status"] = "already_sent"
         alreadyTrackedDetails.append(txDetails)
-        print("[RampKit] ✅ STATUS: Already sent to backend (originalTransactionId in tracked set)")
+        print("[RampKit]    ✅ STATUS: ALREADY SENT TO BACKEND")
+        print("[RampKit]       (originalTransactionId \(originalId) is in our sent-transactions storage)")
+        print("[RampKit]       This means we previously sent a purchase_completed event")
+        print("[RampKit]       and received a successful HTTP 2xx response.")
+        print("[RampKit] ")
         continue
       }
 
@@ -578,15 +599,19 @@ public class RampKitModule: Module {
     }
 
     print("[RampKit] ")
-    print("[RampKit] 🔍 ═══════════════════════════════════════════")
-    print("[RampKit] 🔍 ENTITLEMENT CHECK SUMMARY:")
-    print("[RampKit] 🔍 ═══════════════════════════════════════════")
-    print("[RampKit]    Total entitlements found: \(foundCount)")
-    print("[RampKit]    Already sent to backend:  \(trackedCount)")
-    print("[RampKit]    Skipped (renewal/revoked): \(skippedReasons.count)")
-    print("[RampKit]    NEW events sent:          \(newCount)")
-    print("[RampKit]    Tracked IDs in storage:   \(trackedTransactionIds.count)")
-    print("[RampKit] 🔍 ═══════════════════════════════════════════")
+    print("[RampKit] ════════════════════════════════════════════════════════════")
+    print("[RampKit] 📊 ENTITLEMENT CHECK SUMMARY")
+    print("[RampKit] ════════════════════════════════════════════════════════════")
+    print("[RampKit]    Total entitlements found:     \(foundCount)")
+    print("[RampKit]    Already sent (HTTP 2xx):      \(trackedCount) (no action needed)")
+    print("[RampKit]    Skipped (renewal/revoked):    \(skippedReasons.count) (backend gets via S2S)")
+    print("[RampKit]    NEW events sent this session: \(newCount)")
+    print("[RampKit]    Total tracked IDs in storage: \(trackedTransactionIds.count)")
+    if newCount == 0 && foundCount > 0 {
+      print("[RampKit] ")
+      print("[RampKit]    ℹ️  All purchases already sent or skipped - nothing new to send")
+    }
+    print("[RampKit] ════════════════════════════════════════════════════════════")
 
     return [
       "totalFound": foundCount,
@@ -914,8 +939,8 @@ public class RampKitModule: Module {
     }
   }
   
-  private func sendPurchaseEvent(appId: String, userId: String, eventName: String, properties: [String: Any]) async {
-    let _ = await sendPurchaseEventWithResult(appId: appId, userId: userId, eventName: eventName, properties: properties)
+  private func sendPurchaseEvent(appId: String, userId: String, eventName: String, properties: [String: Any], paywallId: String? = nil) async {
+    let _ = await sendPurchaseEventWithResult(appId: appId, userId: userId, eventName: eventName, properties: properties, paywallId: paywallId)
   }
 
   private struct SendEventResult {
@@ -924,7 +949,16 @@ public class RampKitModule: Module {
     let error: String?
   }
 
-  private func sendPurchaseEventWithResult(appId: String, userId: String, eventName: String, properties: [String: Any]) async -> SendEventResult {
+  private func sendPurchaseEventWithResult(appId: String, userId: String, eventName: String, properties: [String: Any], paywallId: String? = nil) async -> SendEventResult {
+    // Build context with optional paywallId for attribution
+    var context: [String: Any] = [
+      "locale": Locale.current.identifier,
+      "regionCode": Locale.current.regionCode as Any
+    ]
+    if let paywallId = paywallId {
+      context["paywallId"] = paywallId
+    }
+
     let event: [String: Any] = [
       "appId": appId,
       "appUserId": userId,
@@ -937,17 +971,53 @@ public class RampKitModule: Module {
         "platformVersion": UIDevice.current.systemVersion,
         "deviceModel": getDeviceModelIdentifier(),
         "sdkVersion": "1.0.0",
-        "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-        "buildNumber": Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+        "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+        "buildNumber": Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
       ],
-      "context": [
-        "locale": Locale.current.identifier,
-        "regionCode": Locale.current.regionCode
-      ],
+      "context": context,
       "properties": properties
     ]
 
+    // DETAILED LOGGING: Log the full request body
+    print("[RampKit] ")
+    print("[RampKit] ════════════════════════════════════════════════════════════")
+    print("[RampKit] 📤 SENDING PURCHASE EVENT TO BACKEND")
+    print("[RampKit] ════════════════════════════════════════════════════════════")
+    print("[RampKit] URL: https://uustlzuvjmochxkxatfx.supabase.co/functions/v1/app-user-events")
+    print("[RampKit] Method: POST")
+    print("[RampKit] ")
+    print("[RampKit] 📋 REQUEST BODY:")
+    print("[RampKit]    appId: \(appId)")
+    print("[RampKit]    appUserId: \(userId)")
+    print("[RampKit]    eventName: \(eventName)")
+    if let originalTxId = properties["originalTransactionId"] {
+      print("[RampKit]    properties.originalTransactionId: \(originalTxId) ✓ (CRITICAL for attribution)")
+    } else {
+      print("[RampKit]    ⚠️ WARNING: properties.originalTransactionId is MISSING!")
+    }
+    if let productId = properties["productId"] {
+      print("[RampKit]    properties.productId: \(productId)")
+    }
+    if let amount = properties["amount"], let currency = properties["currency"] {
+      print("[RampKit]    properties.amount: \(amount) \(currency)")
+    }
+    if let paywallId = paywallId {
+      print("[RampKit]    context.paywallId: \(paywallId) ✓")
+    }
+
+    // Log full JSON for debugging
+    if let jsonData = try? JSONSerialization.data(withJSONObject: event, options: .prettyPrinted),
+       let jsonString = String(data: jsonData, encoding: .utf8) {
+      print("[RampKit] ")
+      print("[RampKit] 📄 FULL JSON PAYLOAD:")
+      for line in jsonString.components(separatedBy: "\n") {
+        print("[RampKit]    \(line)")
+      }
+    }
+    print("[RampKit] ════════════════════════════════════════════════════════════")
+
     guard let url = URL(string: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1/app-user-events") else {
+      print("[RampKit] ❌ SEND FAILED: Invalid URL")
       return SendEventResult(success: false, statusCode: 0, error: "Invalid URL")
     }
 
@@ -959,15 +1029,40 @@ public class RampKitModule: Module {
 
     do {
       request.httpBody = try JSONSerialization.data(withJSONObject: event)
-      let (_, response) = try await URLSession.shared.data(for: request)
+      let (data, response) = try await URLSession.shared.data(for: request)
+
       if let httpResponse = response as? HTTPURLResponse {
-        print("[RampKit] Purchase event sent: \(eventName) - Status: \(httpResponse.statusCode)")
         let success = httpResponse.statusCode >= 200 && httpResponse.statusCode < 300
-        return SendEventResult(success: success, statusCode: httpResponse.statusCode, error: success ? nil : "HTTP \(httpResponse.statusCode)")
+        let responseBody = String(data: data, encoding: .utf8) ?? "(empty)"
+
+        // DETAILED LOGGING: Log the response
+        print("[RampKit] ")
+        print("[RampKit] 📥 RESPONSE FROM BACKEND:")
+        print("[RampKit]    HTTP Status: \(httpResponse.statusCode)")
+        print("[RampKit]    Success: \(success ? "✅ YES" : "❌ NO")")
+        print("[RampKit]    Response Body: \(responseBody)")
+
+        if success {
+          print("[RampKit] ")
+          print("[RampKit] ✅ EVENT SENT SUCCESSFULLY!")
+          print("[RampKit]    originalTransactionId \(properties["originalTransactionId"] ?? "unknown") will be marked as SENT")
+          print("[RampKit] ════════════════════════════════════════════════════════════")
+        } else {
+          print("[RampKit] ")
+          print("[RampKit] ❌ EVENT SEND FAILED!")
+          print("[RampKit]    Will retry on next app launch")
+          print("[RampKit] ════════════════════════════════════════════════════════════")
+        }
+
+        return SendEventResult(success: success, statusCode: httpResponse.statusCode, error: success ? nil : "HTTP \(httpResponse.statusCode): \(responseBody)")
       }
+      print("[RampKit] ❌ SEND FAILED: No HTTP response")
       return SendEventResult(success: false, statusCode: 0, error: "No HTTP response")
     } catch {
-      print("[RampKit] Failed to send purchase event: \(error)")
+      print("[RampKit] ")
+      print("[RampKit] ❌ SEND FAILED: Network error")
+      print("[RampKit]    Error: \(error.localizedDescription)")
+      print("[RampKit] ════════════════════════════════════════════════════════════")
       return SendEventResult(success: false, statusCode: 0, error: error.localizedDescription)
     }
   }

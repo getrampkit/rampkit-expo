@@ -364,6 +364,8 @@ export class RampKitCore {
             screens.length,
             onboardingId
           );
+          // Auto-recheck transactions after onboarding finishes (catches purchases made during onboarding)
+          TransactionObserver.recheck().catch(() => {});
           try {
             this.onOnboardingFinished?.(payload);
           } catch (_) {}
@@ -407,6 +409,8 @@ export class RampKitCore {
             screens.length,
             onboardingId
           );
+          // Auto-recheck transactions after onboarding closes (catches purchases made before closing)
+          TransactionObserver.recheck().catch(() => {});
         },
       });
     } catch (e) {

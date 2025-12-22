@@ -297,6 +297,8 @@ class RampKitCore {
                     var _a;
                     // Track onboarding completed - trigger: finished
                     EventManager_1.eventManager.trackOnboardingCompleted("finished", screens.length, screens.length, onboardingId);
+                    // Auto-recheck transactions after onboarding finishes (catches purchases made during onboarding)
+                    RampKitNative_1.TransactionObserver.recheck().catch(() => { });
                     try {
                         (_a = this.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(this, payload);
                     }
@@ -323,6 +325,8 @@ class RampKitCore {
                 onCloseAction: (screenIndex, _screenId) => {
                     // Track onboarding completed - trigger: closed
                     EventManager_1.eventManager.trackOnboardingCompleted("closed", screenIndex + 1, screens.length, onboardingId);
+                    // Auto-recheck transactions after onboarding closes (catches purchases made before closing)
+                    RampKitNative_1.TransactionObserver.recheck().catch(() => { });
                 },
             });
         }
