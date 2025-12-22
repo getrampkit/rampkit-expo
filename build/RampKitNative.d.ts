@@ -18,6 +18,7 @@ interface RampKitNativeModule {
     getNotificationPermissions(): Promise<NotificationPermissionResult>;
     startTransactionObserver(appId: string): Promise<TransactionObserverResult>;
     stopTransactionObserver(): Promise<void>;
+    clearTrackedTransactions(): Promise<number>;
     trackPurchaseCompleted(productId: string, transactionId?: string, originalTransactionId?: string): Promise<void>;
     trackPurchaseFromProduct(productId: string): Promise<void>;
 }
@@ -86,6 +87,19 @@ export interface NotificationPermissionResult {
     };
     error?: string;
 }
+export interface SentEventResult {
+    productId: string;
+    transactionId: string;
+    originalTransactionId: string;
+    purchaseDate: string;
+    status: "sent" | "skipped" | "failed" | "error";
+    httpStatus?: number;
+    error?: string;
+    reason?: string;
+    amount?: string;
+    currency?: string;
+    environment?: string;
+}
 export interface TransactionObserverResult {
     configured: boolean;
     appId: string;
@@ -99,6 +113,11 @@ export interface TransactionObserverResult {
         newPurchases: number;
         productIds: string[];
         newProductIds: string[];
+        sentEvents?: SentEventResult[];
+        skippedReasons?: Array<{
+            productId: string;
+            reason: string;
+        }>;
     };
     error?: string;
 }
@@ -198,4 +217,11 @@ export declare const TransactionObserver: {
      * @param productId - The product ID to look up and track
      */
     trackPurchaseByProductId(productId: string): Promise<void>;
+    /**
+     * Clear all tracked transaction IDs from storage
+     * Use this for testing to re-trigger tracking of existing purchases
+     *
+     * @returns The number of tracked transactions that were cleared
+     */
+    clearTracked(): Promise<number>;
 };

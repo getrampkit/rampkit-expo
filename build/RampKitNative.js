@@ -80,6 +80,7 @@ function createFallbackModule() {
             };
         },
         async stopTransactionObserver() { },
+        async clearTrackedTransactions() { return 0; },
         async trackPurchaseCompleted(_productId, _transactionId, _originalTransactionId) { },
         async trackPurchaseFromProduct(_productId) { },
     };
@@ -305,6 +306,23 @@ exports.TransactionObserver = {
                 console.log("[RampKit]    - newPurchases:", result.entitlementCheck.newPurchases);
                 console.log("[RampKit]    - productIds:", result.entitlementCheck.productIds);
                 console.log("[RampKit]    - newProductIds:", result.entitlementCheck.newProductIds);
+                // Log sent events details
+                if (result.entitlementCheck.sentEvents && result.entitlementCheck.sentEvents.length > 0) {
+                    console.log("[RampKit] 📤 Sent events:");
+                    for (const event of result.entitlementCheck.sentEvents) {
+                        console.log("[RampKit]    - productId:", event.productId);
+                        console.log("[RampKit]      transactionId:", event.transactionId);
+                        console.log("[RampKit]      originalTransactionId:", event.originalTransactionId);
+                        console.log("[RampKit]      status:", event.status);
+                        console.log("[RampKit]      httpStatus:", event.httpStatus);
+                        if (event.error) {
+                            console.log("[RampKit]      error:", event.error);
+                        }
+                        if (event.reason) {
+                            console.log("[RampKit]      reason:", event.reason);
+                        }
+                    }
+                }
             }
             if (result.error) {
                 console.warn("[RampKit] ⚠️ Error:", result.error);
@@ -361,6 +379,24 @@ exports.TransactionObserver = {
         }
         catch (e) {
             console.warn("[RampKit] Failed to track purchase by product:", e);
+        }
+    },
+    /**
+     * Clear all tracked transaction IDs from storage
+     * Use this for testing to re-trigger tracking of existing purchases
+     *
+     * @returns The number of tracked transactions that were cleared
+     */
+    async clearTracked() {
+        try {
+            console.log("[RampKit] 🗑️ Clearing tracked transaction IDs...");
+            const count = await RampKitNativeModule.clearTrackedTransactions();
+            console.log("[RampKit] ✅ Cleared", count, "tracked transaction IDs");
+            return count;
+        }
+        catch (e) {
+            console.warn("[RampKit] ❌ Failed to clear tracked transactions:", e);
+            return 0;
         }
     },
 };

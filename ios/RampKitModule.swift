@@ -111,6 +111,14 @@ public class RampKitModule: Module {
       self.stopTransactionObserver()
     }
 
+    AsyncFunction("clearTrackedTransactions") { () -> Int in
+      let count = self.trackedTransactionIds.count
+      self.trackedTransactionIds.removeAll()
+      self.saveTrackedTransactions()
+      print("[RampKit] 🗑️ Cleared \(count) tracked transaction IDs")
+      return count
+    }
+
     // ============================================================================
     // Manual Purchase Tracking (Fallback for Superwall/RevenueCat)
     // ============================================================================
@@ -478,18 +486,22 @@ public class RampKitModule: Module {
     var newCount = 0
     var productIds: [String] = []
     var newProductIds: [String] = []
+    var sentEvents: [[String: Any]] = []
+    var skippedReasons: [[String: Any]] = []
 
     for await result in Transaction.currentEntitlements {
       foundCount += 1
 
       guard case .verified(let transaction) = result else {
         print("[RampKit] ⚠️ Unverified entitlement skipped")
+        skippedReasons.append(["productId": "unknown", "reason": "unverified"])
         continue
       }
 
       let originalId = String(transaction.originalID)
+      let transactionId = String(transaction.id)
       productIds.append(transaction.productID)
-      print("[RampKit] 📦 Found entitlement: \(transaction.productID), originalID: \(originalId)")
+      print("[RampKit] 📦 Found entitlement: \(transaction.productID), originalID: \(originalId), id: \(transactionId)")
 
       // Check if we've already tracked this transaction
       if trackedTransactionIds.contains(originalId) {
@@ -498,17 +510,30 @@ public class RampKitModule: Module {
         continue
       }
 
+      // Skip renewals and revocations
+      guard transaction.originalID == transaction.id,
+            transaction.revocationDate == nil else {
+        skippedReasons.append(["productId": transaction.productID, "reason": "renewal or revoked"])
+        continue
+      }
+
       // NEW transaction we haven't seen!
       newCount += 1
       newProductIds.append(transaction.productID)
       print("[RampKit] 🆕 NEW purchase detected: \(transaction.productID)")
 
-      // Track it
-      await self.handleTransaction(transaction)
+      // Track it and get the result
+      let sendResult = await self.handleTransactionWithResult(transaction)
+      sentEvents.append(sendResult)
 
-      // Mark as tracked
-      trackedTransactionIds.insert(originalId)
-      saveTrackedTransactions()
+      // Only mark as tracked if send succeeded
+      if let status = sendResult["status"] as? String, status == "sent" {
+        trackedTransactionIds.insert(originalId)
+        saveTrackedTransactions()
+        print("[RampKit] ✅ Marked as tracked after successful send: \(transaction.productID)")
+      } else {
+        print("[RampKit] ⚠️ Send failed, will retry next time: \(transaction.productID)")
+      }
     }
 
     print("[RampKit] 🔍 Entitlement check complete:")
@@ -521,7 +546,9 @@ public class RampKitModule: Module {
       "alreadyTracked": trackedCount,
       "newPurchases": newCount,
       "productIds": productIds,
-      "newProductIds": newProductIds
+      "newProductIds": newProductIds,
+      "sentEvents": sentEvents,
+      "skippedReasons": skippedReasons
     ]
   }
 
@@ -553,14 +580,33 @@ public class RampKitModule: Module {
           continue
         }
 
+        // Skip renewals - backend gets these from App Store S2S notifications
+        if transaction.originalID != transaction.id {
+          print("[RampKit] ⏭️ Transaction.updates: skipped (renewal) \(transaction.productID)")
+          await transaction.finish()
+          continue
+        }
+
+        // Skip revocations - backend gets these from S2S notifications
+        if transaction.revocationDate != nil {
+          print("[RampKit] ⏭️ Transaction.updates: skipped (revoked) \(transaction.productID)")
+          await transaction.finish()
+          continue
+        }
+
         print("[RampKit] 🆕 Transaction.updates: NEW purchase \(transaction.productID)")
 
-        // Track it
-        await self.handleTransaction(transaction)
+        // Track it and check result
+        let sendResult = await self.handleTransactionWithResult(transaction)
 
-        // Mark as tracked
-        self.trackedTransactionIds.insert(originalId)
-        self.saveTrackedTransactions()
+        // Only mark as tracked if send succeeded
+        if let status = sendResult["status"] as? String, status == "sent" {
+          self.trackedTransactionIds.insert(originalId)
+          self.saveTrackedTransactions()
+          print("[RampKit] ✅ Transaction.updates: Sent and tracked \(transaction.productID)")
+        } else {
+          print("[RampKit] ⚠️ Transaction.updates: Send failed, will retry \(transaction.productID)")
+        }
 
         // Finish the transaction
         await transaction.finish()
@@ -669,6 +715,100 @@ public class RampKitModule: Module {
     )
   }
 
+  /// Handle transaction and return result for JS logging
+  @available(iOS 15.0, *)
+  private func handleTransactionWithResult(_ transaction: Transaction) async -> [String: Any] {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+    var result: [String: Any] = [
+      "productId": transaction.productID,
+      "transactionId": String(transaction.id),
+      "originalTransactionId": String(transaction.originalID),
+      "purchaseDate": formatter.string(from: transaction.purchaseDate)
+    ]
+
+    guard let appId = self.appId, let userId = self.userId else {
+      result["status"] = "error"
+      result["error"] = "appId or userId missing"
+      return result
+    }
+
+    // Check if this is a renewal (originalID != id)
+    if transaction.originalID != transaction.id {
+      result["status"] = "skipped"
+      result["reason"] = "renewal (originalID != id)"
+      return result
+    }
+
+    // Check if revoked
+    if transaction.revocationDate != nil {
+      result["status"] = "skipped"
+      result["reason"] = "revoked"
+      return result
+    }
+
+    // Build properties
+    var properties: [String: Any] = [:]
+    properties["productId"] = transaction.productID
+    properties["transactionId"] = String(transaction.id)
+    properties["originalTransactionId"] = String(transaction.originalID)
+    properties["purchaseDate"] = formatter.string(from: transaction.purchaseDate)
+    properties["quantity"] = transaction.purchasedQuantity
+    properties["productType"] = mapProductType(transaction.productType)
+
+    if let expirationDate = transaction.expirationDate {
+      properties["expirationDate"] = formatter.string(from: expirationDate)
+    }
+
+    if let offerType = transaction.offerType {
+      properties["isTrial"] = offerType == .introductory
+      properties["isIntroOffer"] = offerType == .introductory
+      properties["offerType"] = formatOfferType(offerType)
+    }
+
+    if let offerId = transaction.offerID {
+      properties["offerId"] = offerId
+    }
+
+    properties["storefront"] = transaction.storefrontCountryCode
+
+    if #available(iOS 16.0, *) {
+      properties["environment"] = transaction.environment.rawValue
+      result["environment"] = transaction.environment.rawValue
+    }
+
+    // Get price info
+    if let product = await getProduct(for: transaction.productID) {
+      properties["amount"] = product.price
+      properties["currency"] = product.priceFormatStyle.currencyCode
+      properties["priceFormatted"] = product.displayPrice
+      result["amount"] = "\(product.price)"
+      result["currency"] = product.priceFormatStyle.currencyCode
+
+      if let subscription = product.subscription {
+        properties["subscriptionPeriod"] = formatSubscriptionPeriod(subscription.subscriptionPeriod)
+        properties["subscriptionGroupId"] = subscription.subscriptionGroupID
+      }
+    }
+
+    // Send event
+    let sendResult = await sendPurchaseEventWithResult(
+      appId: appId,
+      userId: userId,
+      eventName: "purchase_completed",
+      properties: properties
+    )
+
+    result["status"] = sendResult.success ? "sent" : "failed"
+    result["httpStatus"] = sendResult.statusCode
+    if let error = sendResult.error {
+      result["error"] = error
+    }
+
+    return result
+  }
+
   @available(iOS 15.0, *)
   private func formatOfferType(_ offerType: Transaction.OfferType) -> String {
     if offerType == .introductory {
@@ -726,6 +866,16 @@ public class RampKitModule: Module {
   }
   
   private func sendPurchaseEvent(appId: String, userId: String, eventName: String, properties: [String: Any]) async {
+    let _ = await sendPurchaseEventWithResult(appId: appId, userId: userId, eventName: eventName, properties: properties)
+  }
+
+  private struct SendEventResult {
+    let success: Bool
+    let statusCode: Int
+    let error: String?
+  }
+
+  private func sendPurchaseEventWithResult(appId: String, userId: String, eventName: String, properties: [String: Any]) async -> SendEventResult {
     let event: [String: Any] = [
       "appId": appId,
       "appUserId": userId,
@@ -747,23 +897,29 @@ public class RampKitModule: Module {
       ],
       "properties": properties
     ]
-    
-    guard let url = URL(string: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1/app-user-events") else { return }
-    
+
+    guard let url = URL(string: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1/app-user-events") else {
+      return SendEventResult(success: false, statusCode: 0, error: "Invalid URL")
+    }
+
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM2NTUsImV4cCI6MjA3NzY3OTY1NX0.d5XsIMGnia4n9Pou0IidipyyEfSlwpXFoeDBufMOEwE", forHTTPHeaderField: "apikey")
     request.setValue("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1c3RsenV2am1vY2h4a3hhdGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIxMDM2NTUsImV4cCI6MjA3NzY3OTY1NX0.d5XsIMGnia4n9Pou0IidipyyEfSlwpXFoeDBufMOEwE", forHTTPHeaderField: "Authorization")
-    
+
     do {
       request.httpBody = try JSONSerialization.data(withJSONObject: event)
       let (_, response) = try await URLSession.shared.data(for: request)
       if let httpResponse = response as? HTTPURLResponse {
         print("[RampKit] Purchase event sent: \(eventName) - Status: \(httpResponse.statusCode)")
+        let success = httpResponse.statusCode >= 200 && httpResponse.statusCode < 300
+        return SendEventResult(success: success, statusCode: httpResponse.statusCode, error: success ? nil : "HTTP \(httpResponse.statusCode)")
       }
+      return SendEventResult(success: false, statusCode: 0, error: "No HTTP response")
     } catch {
       print("[RampKit] Failed to send purchase event: \(error)")
+      return SendEventResult(success: false, statusCode: 0, error: error.localizedDescription)
     }
   }
 

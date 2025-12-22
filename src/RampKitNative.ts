@@ -32,6 +32,7 @@ interface RampKitNativeModule {
   // Transaction Observer (StoreKit 2 / Google Play Billing)
   startTransactionObserver(appId: string): Promise<TransactionObserverResult>;
   stopTransactionObserver(): Promise<void>;
+  clearTrackedTransactions(): Promise<number>;
 
   // Manual Purchase Tracking (Fallback for Superwall/RevenueCat)
   trackPurchaseCompleted(productId: string, transactionId?: string, originalTransactionId?: string): Promise<void>;
@@ -108,6 +109,21 @@ export interface NotificationPermissionResult {
   error?: string;
 }
 
+// Sent event result
+export interface SentEventResult {
+  productId: string;
+  transactionId: string;
+  originalTransactionId: string;
+  purchaseDate: string;
+  status: "sent" | "skipped" | "failed" | "error";
+  httpStatus?: number;
+  error?: string;
+  reason?: string;
+  amount?: string;
+  currency?: string;
+  environment?: string;
+}
+
 // Transaction observer result for debugging
 export interface TransactionObserverResult {
   configured: boolean;
@@ -122,6 +138,8 @@ export interface TransactionObserverResult {
     newPurchases: number;
     productIds: string[];
     newProductIds: string[];
+    sentEvents?: SentEventResult[];
+    skippedReasons?: Array<{ productId: string; reason: string }>;
   };
   error?: string;
 }
@@ -204,6 +222,7 @@ function createFallbackModule(): RampKitNativeModule {
       };
     },
     async stopTransactionObserver(): Promise<void> {},
+    async clearTrackedTransactions(): Promise<number> { return 0; },
     async trackPurchaseCompleted(_productId: string, _transactionId?: string, _originalTransactionId?: string): Promise<void> {},
     async trackPurchaseFromProduct(_productId: string): Promise<void> {},
   };
@@ -451,6 +470,24 @@ export const TransactionObserver = {
         console.log("[RampKit]    - newPurchases:", result.entitlementCheck.newPurchases);
         console.log("[RampKit]    - productIds:", result.entitlementCheck.productIds);
         console.log("[RampKit]    - newProductIds:", result.entitlementCheck.newProductIds);
+
+        // Log sent events details
+        if (result.entitlementCheck.sentEvents && result.entitlementCheck.sentEvents.length > 0) {
+          console.log("[RampKit] 📤 Sent events:");
+          for (const event of result.entitlementCheck.sentEvents) {
+            console.log("[RampKit]    - productId:", event.productId);
+            console.log("[RampKit]      transactionId:", event.transactionId);
+            console.log("[RampKit]      originalTransactionId:", event.originalTransactionId);
+            console.log("[RampKit]      status:", event.status);
+            console.log("[RampKit]      httpStatus:", event.httpStatus);
+            if (event.error) {
+              console.log("[RampKit]      error:", event.error);
+            }
+            if (event.reason) {
+              console.log("[RampKit]      reason:", event.reason);
+            }
+          }
+        }
       }
 
       if (result.error) {
@@ -516,6 +553,24 @@ export const TransactionObserver = {
       console.log("[RampKit] Purchase lookup and tracking complete:", productId);
     } catch (e) {
       console.warn("[RampKit] Failed to track purchase by product:", e);
+    }
+  },
+
+  /**
+   * Clear all tracked transaction IDs from storage
+   * Use this for testing to re-trigger tracking of existing purchases
+   *
+   * @returns The number of tracked transactions that were cleared
+   */
+  async clearTracked(): Promise<number> {
+    try {
+      console.log("[RampKit] 🗑️ Clearing tracked transaction IDs...");
+      const count = await RampKitNativeModule.clearTrackedTransactions();
+      console.log("[RampKit] ✅ Cleared", count, "tracked transaction IDs");
+      return count;
+    } catch (e) {
+      console.warn("[RampKit] ❌ Failed to clear tracked transactions:", e);
+      return 0;
     }
   },
 };
