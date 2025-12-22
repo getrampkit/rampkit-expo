@@ -1002,6 +1002,8 @@ ${js}
 const SLIDE_FADE_OFFSET = 200;
 const SLIDE_FADE_DURATION = 320;
 function Overlay(props) {
+    // Get explicit window dimensions to prevent flex-based layout recalculations during transitions
+    const { width: windowWidth, height: windowHeight } = (0, react_native_1.useWindowDimensions)();
     const pagerRef = (0, react_1.useRef)(null);
     const [index, setIndex] = (0, react_1.useState)(0);
     const [loadedCount, setLoadedCount] = (0, react_1.useState)(0);
@@ -1627,7 +1629,7 @@ function Overlay(props) {
                         opacity: pagerOpacity,
                         transform: [{ translateX: pagerTranslateX }],
                     },
-                ], children: (0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: styles.page, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: styles.webview, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening + exports.injectedDynamicTapHandler + exports.injectedButtonAnimations, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedButtonAnimations, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
+                ], children: (0, jsx_runtime_1.jsx)(react_native_pager_view_1.default, { ref: pagerRef, style: react_native_1.StyleSheet.absoluteFill, scrollEnabled: false, initialPage: 0, onPageSelected: onPageSelected, offscreenPageLimit: props.screens.length, overScrollMode: "never", children: docs.map((doc, i) => ((0, jsx_runtime_1.jsx)(react_native_1.View, { style: { width: windowWidth, height: windowHeight }, renderToHardwareTextureAndroid: true, children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: { width: windowWidth, height: windowHeight }, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening + exports.injectedDynamicTapHandler + exports.injectedButtonAnimations, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedButtonAnimations, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
                                 // Only initialize each screen ONCE to avoid repeated processing
                                 if (initializedScreensRef.current.has(i)) {
                                     if (__DEV__)

@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
-import { View, StyleSheet, BackHandler, Animated, Easing, Linking, Platform } from "react-native";
+import { View, StyleSheet, BackHandler, Animated, Easing, Linking, Platform, useWindowDimensions } from "react-native";
 import RootSiblings from "react-native-root-siblings";
 import PagerView, {
   PagerViewOnPageSelectedEvent,
@@ -1132,6 +1132,9 @@ function Overlay(props: {
   // Called when close action is explicitly triggered (rampkit:close)
   onCloseAction?: (screenIndex: number, screenId: string) => void;
 }) {
+  // Get explicit window dimensions to prevent flex-based layout recalculations during transitions
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+
   const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
@@ -1846,12 +1849,12 @@ function Overlay(props: {
         {docs.map((doc: any, i: number) => (
           <View
             key={props.screens[i].id}
-            style={styles.page}
+            style={{ width: windowWidth, height: windowHeight }}
             renderToHardwareTextureAndroid
           >
             <WebView
               ref={(r: any) => (webviewsRef.current[i] = r)}
-              style={styles.webview}
+              style={{ width: windowWidth, height: windowHeight }}
               originWhitelist={["*"]}
               source={{ html: doc }}
               injectedJavaScriptBeforeContentLoaded={injectedHardening + injectedDynamicTapHandler + injectedButtonAnimations}
