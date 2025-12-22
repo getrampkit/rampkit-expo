@@ -1650,10 +1650,14 @@ function Overlay(props) {
                                 if (__DEV__)
                                     console.log("[Rampkit] onLoadEnd initializing screen", i);
                                 sendVarsToWebView(i, true);
-                                // Only send onboarding state to the ACTIVE screen (index 0 on initial load)
-                                if (i === activeScreenIndexRef.current) {
-                                    sendOnboardingStateToWebView(i);
-                                }
+                                // Send onboarding state to ALL screens during initial load (matching iOS SDK behavior).
+                                // This prevents a visual glitch where content shifts on first navigation to each screen.
+                                // Previously, we only sent state to the active screen (screen 0), which meant screens 1, 2, etc.
+                                // received their onboarding state for the first time during navigation - causing DOM updates
+                                // and layout shifts visible during the transition animation.
+                                // By sending state to all screens upfront, the DOM is already in its final state
+                                // before any navigation occurs.
+                                sendOnboardingStateToWebView(i);
                             }, onMessage: (ev) => {
                                 var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
                                 const raw = ev.nativeEvent.data;
