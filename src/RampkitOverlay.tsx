@@ -1175,6 +1175,95 @@ function Overlay(props: {
   // Settling period - ignore variable updates from a screen for this long after activation
   const SCREEN_SETTLING_MS = 300;
 
+  // Queue of pending actions per screen - actions are queued when screen is inactive
+  // and executed when the screen becomes active (matches iOS SDK behavior)
+  const pendingActionsRef = useRef({} as Record<number, (() => void)[]>);
+
+  // Check if a screen is currently active
+  const isScreenActive = (screenIndex: number): boolean => {
+    return screenIndex === activeScreenIndexRef.current;
+  };
+
+  // Queue an action to be executed when screen becomes active
+  const queueAction = (screenIndex: number, action: () => void) => {
+    if (__DEV__) {
+      console.log(`[Rampkit] 📥 Queuing action for screen ${screenIndex}`);
+    }
+    if (!pendingActionsRef.current[screenIndex]) {
+      pendingActionsRef.current[screenIndex] = [];
+    }
+    pendingActionsRef.current[screenIndex].push(action);
+  };
+
+  // Process any pending actions for a screen
+  const processPendingActions = (screenIndex: number) => {
+    const actions = pendingActionsRef.current[screenIndex];
+    if (!actions || actions.length === 0) return;
+
+    if (__DEV__) {
+      console.log(`[Rampkit] ⚡ Processing ${actions.length} pending action(s) for screen ${screenIndex}`);
+    }
+
+    for (const action of actions) {
+      try {
+        action();
+      } catch (e) {
+        console.warn('[Rampkit] Error executing pending action:', e);
+      }
+    }
+
+    // Clear the queue
+    pendingActionsRef.current[screenIndex] = [];
+  };
+
+  // Activate a screen (set visibility flag and dispatch event)
+  const activateScreen = (screenIndex: number) => {
+    const wv = webviewsRef.current[screenIndex];
+    if (!wv) return;
+
+    if (__DEV__) {
+      console.log(`[Rampkit] 🔓 Activating screen ${screenIndex}`);
+    }
+
+    const screenId = props.screens[screenIndex]?.id || '';
+    const activateScript = `(function() {
+      window.__rampkitScreenVisible = true;
+      window.__rampkitScreenIndex = ${screenIndex};
+      console.log('🔓 Screen ${screenIndex} ACTIVATED');
+
+      // Dispatch custom event that HTML can listen to
+      try {
+        document.dispatchEvent(new CustomEvent('rampkit:screen-visible', {
+          detail: { screenIndex: ${screenIndex}, screenId: '${screenId}' }
+        }));
+      } catch(e) {}
+    })();`;
+
+    // @ts-ignore: injectJavaScript exists on WebView instance
+    wv.injectJavaScript(activateScript);
+
+    // Process any pending actions for this screen
+    processPendingActions(screenIndex);
+  };
+
+  // Deactivate a screen (clear visibility flag)
+  const deactivateScreen = (screenIndex: number) => {
+    const wv = webviewsRef.current[screenIndex];
+    if (!wv) return;
+
+    if (__DEV__) {
+      console.log(`[Rampkit] 🔒 Deactivating screen ${screenIndex}`);
+    }
+
+    const deactivateScript = `(function() {
+      window.__rampkitScreenVisible = false;
+      console.log('🔒 Screen ${screenIndex} DEACTIVATED');
+    })();`;
+
+    // @ts-ignore: injectJavaScript exists on WebView instance
+    wv.injectJavaScript(deactivateScript);
+  };
+
   // ============================================================================
   // Navigation Resolution Helpers (matches iOS SDK behavior)
   // ============================================================================
@@ -1360,8 +1449,15 @@ function Overlay(props: {
     };
   }, [handleRequestClose, props.onRegisterClose]);
 
-  // Helper to complete a screen transition - updates state and sends data
-  const completeTransition = (nextIndex: number) => {
+  // Helper to complete a screen transition - updates state, activates/deactivates screens, and sends data
+  const completeTransition = (nextIndex: number, prevIndex: number) => {
+    // Deactivate previous screen and activate new screen (matches iOS SDK behavior)
+    // This ensures actions like review/notification requests only fire on the active screen
+    if (prevIndex !== nextIndex) {
+      deactivateScreen(prevIndex);
+      activateScreen(nextIndex);
+    }
+
     setIndex(nextIndex);
     sendVarsToWebView(nextIndex);
     sendOnboardingStateToWebView(nextIndex);
@@ -1425,7 +1521,7 @@ function Overlay(props: {
         currentScreenAnim.opacity.setValue(0);
         currentScreenAnim.translateX.setValue(0);
 
-        completeTransition(nextIndex);
+        completeTransition(nextIndex, index);
         setIsTransitioning(false);
       });
 
@@ -1474,7 +1570,7 @@ function Overlay(props: {
         // Reset old screen position
         currentScreenAnim.translateX.setValue(0);
 
-        completeTransition(nextIndex);
+        completeTransition(nextIndex, index);
         setIsTransitioning(false);
       });
 
@@ -1495,7 +1591,7 @@ function Overlay(props: {
       nextScreenAnim.opacity.setValue(1);
 
       requestAnimationFrame(() => {
-        completeTransition(nextIndex);
+        completeTransition(nextIndex, index);
 
         // Fade curtain out to reveal new screen
         Animated.timing(fadeOpacity, {
@@ -1900,6 +1996,25 @@ function Overlay(props: {
                 // By sending state to all screens upfront, the DOM is already in its final state
                 // before any navigation occurs.
                 sendOnboardingStateToWebView(i);
+
+                // Set initial visibility flag (matches iOS SDK behavior).
+                // Only screen 0 starts as active - all others start inactive.
+                // This prevents actions like review requests from firing on all screens at startup.
+                if (i === 0) {
+                  // First screen is immediately active
+                  activateScreen(i);
+                } else {
+                  // Other screens start inactive - inject the flag but don't dispatch event
+                  const wv = webviewsRef.current[i];
+                  if (wv) {
+                    // @ts-ignore: injectJavaScript exists on WebView instance
+                    wv.injectJavaScript(`(function() {
+                      window.__rampkitScreenVisible = false;
+                      window.__rampkitScreenIndex = ${i};
+                      console.log('🔒 Screen ${i} loaded but INACTIVE');
+                    })();`);
+                  }
+                }
               }}
               onMessage={(ev: any) => {
                 const raw = ev.nativeEvent.data;
@@ -2007,23 +2122,41 @@ function Overlay(props: {
                     data?.type === "rampkit:request-review" ||
                     data?.type === "rampkit:review"
                   ) {
-                    (async () => {
+                    const executeReview = async () => {
                       try {
                         const available = await StoreReview.isAvailableAsync();
                         if (available) {
                           await StoreReview.requestReview();
                         }
                       } catch (_) {}
-                    })();
+                    };
+
+                    // Only execute if screen is active, otherwise queue for later
+                    if (isScreenActive(i)) {
+                      executeReview();
+                    } else {
+                      if (__DEV__) console.log(`[Rampkit] Queuing review request from inactive screen ${i}`);
+                      queueAction(i, executeReview);
+                    }
                     return;
                   }
                   // 4) A page requested notification permission
                   if (data?.type === "rampkit:request-notification-permission") {
-                    handleNotificationPermissionRequest({
-                      ios: data?.ios,
-                      android: data?.android,
-                      behavior: data?.behavior,
-                    });
+                    const executeNotification = () => {
+                      handleNotificationPermissionRequest({
+                        ios: data?.ios,
+                        android: data?.android,
+                        behavior: data?.behavior,
+                      });
+                    };
+
+                    // Only execute if screen is active, otherwise queue for later
+                    if (isScreenActive(i)) {
+                      executeNotification();
+                    } else {
+                      if (__DEV__) console.log(`[Rampkit] Queuing notification request from inactive screen ${i}`);
+                      queueAction(i, executeNotification);
+                    }
                     return;
                   }
                   // 5) Onboarding finished event from page
@@ -2111,18 +2244,34 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:request-review" || raw === "rampkit:review") {
-                    (async () => {
+                    const executeReview = async () => {
                       try {
                         const available = await StoreReview.isAvailableAsync();
                         if (available) {
                           await StoreReview.requestReview();
                         }
                       } catch (_) {}
-                    })();
+                    };
+
+                    // Only execute if screen is active, otherwise queue for later
+                    if (isScreenActive(i)) {
+                      executeReview();
+                    } else {
+                      if (__DEV__) console.log(`[Rampkit] Queuing review request (raw) from inactive screen ${i}`);
+                      queueAction(i, executeReview);
+                    }
                     return;
                   }
                   if (raw === "rampkit:request-notification-permission") {
-                    handleNotificationPermissionRequest(undefined);
+                    const executeNotification = () => handleNotificationPermissionRequest(undefined);
+
+                    // Only execute if screen is active, otherwise queue for later
+                    if (isScreenActive(i)) {
+                      executeNotification();
+                    } else {
+                      if (__DEV__) console.log(`[Rampkit] Queuing notification request (raw) from inactive screen ${i}`);
+                      queueAction(i, executeNotification);
+                    }
                     return;
                   }
                   if (raw === "rampkit:onboarding-finished") {
