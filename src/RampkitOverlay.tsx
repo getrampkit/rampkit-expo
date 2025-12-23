@@ -2190,10 +2190,20 @@ function Overlay(props: {
                     data?.type === "rampkit:continue" ||
                     data?.type === "continue"
                   ) {
+                    // Only process continue from the active screen
+                    if (!isScreenActive(i)) {
+                      if (__DEV__) console.log(`[RampKit] Ignoring continue from inactive screen ${i}`);
+                      return;
+                    }
                     handleAdvance(i, data?.animation || "fade");
                     return;
                   }
                   if (data?.type === "rampkit:navigate") {
+                    // Only process navigate from the active screen
+                    if (!isScreenActive(i)) {
+                      if (__DEV__) console.log(`[RampKit] Ignoring navigate from inactive screen ${i}`);
+                      return;
+                    }
                     const target = data?.targetScreenId;
                     if (target === "__goBack__") {
                       handleGoBack(i, data?.animation || "fade");
@@ -2214,6 +2224,11 @@ function Overlay(props: {
                     return;
                   }
                   if (data?.type === "rampkit:goBack") {
+                    // Only process goBack from the active screen
+                    if (!isScreenActive(i)) {
+                      if (__DEV__) console.log(`[RampKit] Ignoring goBack from inactive screen ${i}`);
+                      return;
+                    }
                     handleGoBack(i, data?.animation || "fade");
                     return;
                   }
@@ -2236,6 +2251,11 @@ function Overlay(props: {
                     raw === "next" ||
                     raw === "continue"
                   ) {
+                    // Only process from the active screen
+                    if (!isScreenActive(i)) {
+                      if (__DEV__) console.log(`[RampKit] Ignoring ${raw} from inactive screen ${i}`);
+                      return;
+                    }
                     handleAdvance(i);
                     return;
                   }
@@ -2285,10 +2305,20 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:goBack") {
+                    // Only process from the active screen
+                    if (!isScreenActive(i)) {
+                      if (__DEV__) console.log(`[RampKit] Ignoring goBack (raw) from inactive screen ${i}`);
+                      return;
+                    }
                     handleGoBack(i);
                     return;
                   }
                   if (raw.startsWith("rampkit:navigate:")) {
+                    // Only process from the active screen
+                    if (!isScreenActive(i)) {
+                      if (__DEV__) console.log(`[RampKit] Ignoring navigate (raw) from inactive screen ${i}`);
+                      return;
+                    }
                     const target = raw.slice("rampkit:navigate:".length);
                     if (target === "__goBack__") {
                       handleGoBack(i);

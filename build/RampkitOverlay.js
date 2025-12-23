@@ -1918,10 +1918,22 @@ function Overlay(props) {
                                     }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:continue" ||
                                         (data === null || data === void 0 ? void 0 : data.type) === "continue") {
+                                        // Only process continue from the active screen
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[RampKit] Ignoring continue from inactive screen ${i}`);
+                                            return;
+                                        }
                                         handleAdvance(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                         return;
                                     }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:navigate") {
+                                        // Only process navigate from the active screen
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[RampKit] Ignoring navigate from inactive screen ${i}`);
+                                            return;
+                                        }
                                         const target = data === null || data === void 0 ? void 0 : data.targetScreenId;
                                         if (target === "__goBack__") {
                                             handleGoBack(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
@@ -1941,6 +1953,12 @@ function Overlay(props) {
                                         return;
                                     }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:goBack") {
+                                        // Only process goBack from the active screen
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[RampKit] Ignoring goBack from inactive screen ${i}`);
+                                            return;
+                                        }
                                         handleGoBack(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                         return;
                                     }
@@ -1963,6 +1981,12 @@ function Overlay(props) {
                                     if (raw === "rampkit:tap" ||
                                         raw === "next" ||
                                         raw === "continue") {
+                                        // Only process from the active screen
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[RampKit] Ignoring ${raw} from inactive screen ${i}`);
+                                            return;
+                                        }
                                         handleAdvance(i);
                                         return;
                                     }
@@ -2017,10 +2041,22 @@ function Overlay(props) {
                                         return;
                                     }
                                     if (raw === "rampkit:goBack") {
+                                        // Only process from the active screen
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[RampKit] Ignoring goBack (raw) from inactive screen ${i}`);
+                                            return;
+                                        }
                                         handleGoBack(i);
                                         return;
                                     }
                                     if (raw.startsWith("rampkit:navigate:")) {
+                                        // Only process from the active screen
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[RampKit] Ignoring navigate (raw) from inactive screen ${i}`);
+                                            return;
+                                        }
                                         const target = raw.slice("rampkit:navigate:".length);
                                         if (target === "__goBack__") {
                                             handleGoBack(i);
