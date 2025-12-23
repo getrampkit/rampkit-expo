@@ -1,9 +1,8 @@
 import React, { useMemo, useRef, useState } from "react";
 import { View, StyleSheet, BackHandler, Animated, Easing, Linking, Platform, useWindowDimensions } from "react-native";
 import RootSiblings from "react-native-root-siblings";
-import PagerView, {
-  PagerViewOnPageSelectedEvent,
-} from "react-native-pager-view";
+// PagerView removed - we now render all screens in a stack to ensure first paint completes
+// before any navigation. This fixes the "glitch on first open" bug.
 import { WebView } from "react-native-webview";
 import { Haptics, StoreReview, Notifications } from "./RampKitNative";
 import { RampKitContext, NavigationData, OnboardingResponse } from "./types";
@@ -1135,7 +1134,6 @@ function Overlay(props: {
   // Get explicit window dimensions to prevent flex-based layout recalculations during transitions
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
-  const pagerRef = useRef(null as any);
   const [index, setIndex] = useState(0);
   const [loadedCount, setLoadedCount] = useState(0);
   const [firstPageLoaded, setFirstPageLoaded] = useState(false);
@@ -1145,10 +1143,17 @@ function Overlay(props: {
   const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const fadeOpacity = useRef(new Animated.Value(0)).current;
-  
-  // slideFade animation values - animates the PagerView container
-  const pagerOpacity = useRef(new Animated.Value(1)).current;
-  const pagerTranslateX = useRef(new Animated.Value(0)).current;
+
+  // Per-screen animation values - each screen has its own opacity and translateX
+  // This replaces PagerView and ensures ALL screens are rendered (forcing first paint)
+  // First screen starts visible (opacity: 1), others start hidden (opacity: 0)
+  const screenAnimsRef = useRef(
+    props.screens.map((_, i) => ({
+      opacity: new Animated.Value(i === 0 ? 1 : 0),
+      translateX: new Animated.Value(0),
+    }))
+  );
+  const screenAnims = screenAnimsRef.current;
   
   const allLoaded = loadedCount >= props.screens.length;
   const hasTrackedInitialScreen = useRef(false);
@@ -1355,7 +1360,22 @@ function Overlay(props: {
     };
   }, [handleRequestClose, props.onRegisterClose]);
 
+  // Helper to complete a screen transition - updates state and sends data
+  const completeTransition = (nextIndex: number) => {
+    setIndex(nextIndex);
+    sendVarsToWebView(nextIndex);
+    sendOnboardingStateToWebView(nextIndex);
+
+    // Track screen change event
+    if (props.onScreenChange && props.screens[nextIndex]) {
+      props.onScreenChange(nextIndex, props.screens[nextIndex].id);
+    }
+  };
+
   // Android hardware back goes to previous page, then closes
+  // NOTE: This function no longer uses PagerView. Instead, all screens are rendered
+  // in a stack and we animate individual screen opacity/transform values.
+  // This ensures all WebViews complete their first paint before any navigation.
   const navigateToIndex = (nextIndex: number, animation: string = "fade") => {
     if (
       nextIndex === index ||
@@ -1365,119 +1385,119 @@ function Overlay(props: {
       return;
     if (isTransitioning) return;
 
+    // Update active screen index and activation time FIRST
+    activeScreenIndexRef.current = nextIndex;
+    screenActivationTimeRef.current[nextIndex] = Date.now();
+
     // Parse animation type case-insensitively
     const animationType = animation?.toLowerCase() || "fade";
+    const currentScreenAnim = screenAnims[index];
+    const nextScreenAnim = screenAnims[nextIndex];
+    const isForward = nextIndex > index;
+    const direction = isForward ? 1 : -1;
 
-    // Slide animation: use PagerView's built-in animated page change
-    // and skip the fade curtain overlay.
+    // Slide animation: animate both screens simultaneously
     if (animationType === "slide") {
-      // Update active screen index and activation time FIRST
-      activeScreenIndexRef.current = nextIndex;
-      screenActivationTimeRef.current[nextIndex] = Date.now();
-      
-      // @ts-ignore: methods exist on PagerView instance
-      const pager = pagerRef.current as any;
-      if (!pager) return;
-      if (typeof pager.setPage === "function") {
-        pager.setPage(nextIndex);
-      } else if (typeof pager.setPageWithoutAnimation === "function") {
-        pager.setPageWithoutAnimation(nextIndex);
-      }
-      // Explicitly send vars to the new page after setting it
-      requestAnimationFrame(() => {
-        sendVarsToWebView(nextIndex);
-        sendOnboardingStateToWebView(nextIndex);
+      setIsTransitioning(true);
+
+      // Set up next screen starting position (offscreen in direction of navigation)
+      nextScreenAnim.translateX.setValue(SLIDE_FADE_OFFSET * direction);
+      nextScreenAnim.opacity.setValue(1);
+
+      // Animate both screens
+      Animated.parallel([
+        // Current screen slides out
+        Animated.timing(currentScreenAnim.translateX, {
+          toValue: -SLIDE_FADE_OFFSET * direction,
+          duration: SLIDE_FADE_DURATION,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        // Next screen slides in
+        Animated.timing(nextScreenAnim.translateX, {
+          toValue: 0,
+          duration: SLIDE_FADE_DURATION,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Hide old screen and reset its position
+        currentScreenAnim.opacity.setValue(0);
+        currentScreenAnim.translateX.setValue(0);
+
+        completeTransition(nextIndex);
+        setIsTransitioning(false);
       });
+
       return;
     }
 
-    // slideFade animation: smooth slide + fade transition
-    // Animates the PagerView container out, switches page, then animates back in
+    // slideFade animation: smooth slide + fade transition on both screens
     if (animationType === "slidefade") {
       setIsTransitioning(true);
-      
-      // Update active screen index and activation time FIRST
-      activeScreenIndexRef.current = nextIndex;
-      screenActivationTimeRef.current[nextIndex] = Date.now();
-      
-      // Determine direction: forward (nextIndex > index) or backward
-      const isForward = nextIndex > index;
-      const direction = isForward ? 1 : -1;
-      
+
       const halfDuration = SLIDE_FADE_DURATION / 2;
-      const timingConfig = {
-        duration: halfDuration,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      };
-      
-      // Phase 1: Fade out and slide the current page in exit direction
+
+      // Set up next screen starting position
+      nextScreenAnim.translateX.setValue(SLIDE_FADE_OFFSET * direction * 0.5);
+      nextScreenAnim.opacity.setValue(0);
+
+      // Animate both screens simultaneously with crossfade
       Animated.parallel([
-        Animated.timing(pagerOpacity, {
+        // Current screen fades out and slides away
+        Animated.timing(currentScreenAnim.opacity, {
           toValue: 0,
-          ...timingConfig,
+          duration: halfDuration,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
         }),
-        Animated.timing(pagerTranslateX, {
-          toValue: -SLIDE_FADE_OFFSET * direction * 0.5, // Slide out in opposite direction
-          ...timingConfig,
+        Animated.timing(currentScreenAnim.translateX, {
+          toValue: -SLIDE_FADE_OFFSET * direction * 0.5,
+          duration: halfDuration,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        // Next screen fades in and slides to center
+        Animated.timing(nextScreenAnim.opacity, {
+          toValue: 1,
+          duration: halfDuration,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(nextScreenAnim.translateX, {
+          toValue: 0,
+          duration: halfDuration,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
         }),
       ]).start(() => {
-        // Switch page instantly while invisible
-        // @ts-ignore: method exists on PagerView instance
-        pagerRef.current?.setPageWithoutAnimation?.(nextIndex) ??
-          pagerRef.current?.setPage(nextIndex);
-        
-        // Set up for incoming animation - start from the direction we're navigating from
-        pagerTranslateX.setValue(SLIDE_FADE_OFFSET * direction * 0.5);
-        
-        // Phase 2: Fade in and slide the new page to center
-        Animated.parallel([
-          Animated.timing(pagerOpacity, {
-            toValue: 1,
-            duration: halfDuration,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(pagerTranslateX, {
-            toValue: 0,
-            duration: halfDuration,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]).start(() => {
-          // Send vars and onboarding state to the new page
-          sendVarsToWebView(nextIndex);
-          sendOnboardingStateToWebView(nextIndex);
-          setIsTransitioning(false);
-        });
+        // Reset old screen position
+        currentScreenAnim.translateX.setValue(0);
+
+        completeTransition(nextIndex);
+        setIsTransitioning(false);
       });
-      
+
       return;
     }
 
     // Default fade animation: uses a white curtain overlay
     setIsTransitioning(true);
-    
-    // Update active screen index and activation time FIRST
-    activeScreenIndexRef.current = nextIndex;
-    screenActivationTimeRef.current[nextIndex] = Date.now();
-    
+
     Animated.timing(fadeOpacity, {
       toValue: 1,
       duration: 160,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start(() => {
-      // switch page without built-in slide animation
-      // @ts-ignore: method exists on PagerView instance
-      pagerRef.current?.setPageWithoutAnimation?.(nextIndex) ??
-        pagerRef.current?.setPage(nextIndex);
+      // Swap screens instantly while curtain is opaque
+      currentScreenAnim.opacity.setValue(0);
+      nextScreenAnim.opacity.setValue(1);
+
       requestAnimationFrame(() => {
-        // Explicitly send vars and onboarding state to the new page after the page switch completes
-        // This ensures the webview receives the latest state even if onPageSelected
-        // timing was off during the transition
-        sendVarsToWebView(nextIndex);
-        sendOnboardingStateToWebView(nextIndex);
+        completeTransition(nextIndex);
+
+        // Fade curtain out to reveal new screen
         Animated.timing(fadeOpacity, {
           toValue: 0,
           duration: 160,
@@ -1617,7 +1637,7 @@ function Overlay(props: {
     
     // NOTE: Do NOT call sendOnboardingStateToWebView here - it would cause infinite loops
     // because the WebView echoes back variables which triggers another sendVarsToWebView.
-    // Onboarding state is sent separately in onLoadEnd and onPageSelected.
+    // Onboarding state is sent separately in onLoadEnd and navigateToIndex.
   }
 
   React.useEffect(() => {
@@ -1668,27 +1688,8 @@ function Overlay(props: {
     return () => clearTimeout(tid);
   }, [docs.length, firstPageLoaded]);
 
-  const onPageSelected = (e: any) => {
-    const pos = e.nativeEvent.position;
-    setIndex(pos);
-    
-    // Update active screen index and activation time FIRST
-    activeScreenIndexRef.current = pos;
-    screenActivationTimeRef.current[pos] = Date.now();
-    
-    if (__DEV__) console.log("[Rampkit] onPageSelected - activating screen", pos);
-    
-    // Send vars and onboarding state to the newly active screen
-    requestAnimationFrame(() => {
-      sendVarsToWebView(pos);
-      sendOnboardingStateToWebView(pos);
-    });
-    
-    // Track screen change event
-    if (props.onScreenChange && props.screens[pos]) {
-      props.onScreenChange(pos, props.screens[pos].id);
-    }
-  };
+  // NOTE: onPageSelected callback removed - we no longer use PagerView.
+  // Screen transitions are now handled directly in navigateToIndex via completeTransition().
 
   const handleAdvance = (i: number, animation: string = "fade") => {
     const currentScreenId = props.screens[i]?.id;
@@ -1828,29 +1829,25 @@ function Overlay(props: {
       ]}
       pointerEvents={visible && !isClosing ? "auto" : "none"}
     >
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            opacity: pagerOpacity,
-            transform: [{ translateX: pagerTranslateX }],
-          },
-        ]}
-      >
-        <PagerView
-          ref={pagerRef}
-          style={StyleSheet.absoluteFill}
-          scrollEnabled={false}
-          initialPage={0}
-          onPageSelected={onPageSelected}
-          offscreenPageLimit={props.screens.length}
-          overScrollMode="never"
-        >
+      {/* Screen stack - ALL screens are always rendered to force first paint.
+          This matches iOS SDK architecture where all WKWebViews are created and loaded upfront.
+          Each screen is wrapped in an Animated.View with its own opacity/transform for transitions.
+          This fixes the "glitch on first open" bug caused by PagerView deferring paint for offscreen pages. */}
+      <View style={StyleSheet.absoluteFill}>
         {docs.map((doc: any, i: number) => (
-          <View
+          <Animated.View
             key={props.screens[i].id}
-            style={{ width: windowWidth, height: windowHeight }}
-            renderToHardwareTextureAndroid
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                opacity: screenAnims[i]?.opacity,
+                transform: [{ translateX: screenAnims[i]?.translateX || 0 }],
+                // Active screen renders on top
+                zIndex: i === index ? 1 : 0,
+              },
+            ]}
+            // Only the active screen receives touch events
+            pointerEvents={i === index ? 'auto' : 'none'}
           >
             <WebView
               ref={(r: any) => (webviewsRef.current[i] = r)}
@@ -2197,11 +2194,10 @@ function Overlay(props: {
                 console.warn("WebView error:", e.nativeEvent);
               }}
             />
-          </View>
+          </Animated.View>
         ))}
-        </PagerView>
-      </Animated.View>
-      
+      </View>
+
       {/* Fade curtain overlays above pages to mask page switch */}
       <Animated.View
         pointerEvents={isTransitioning ? "auto" : "none"}
