@@ -1077,7 +1077,7 @@ function Overlay(props) {
         // Clear the queue
         pendingActionsRef.current[screenIndex] = [];
     };
-    // Activate a screen (set visibility flag and dispatch event)
+    // Activate a screen (set visibility flag, dispatch event, and resume Lotties)
     const activateScreen = (screenIndex) => {
         var _a;
         const wv = webviewsRef.current[screenIndex];
@@ -1092,6 +1092,24 @@ function Overlay(props) {
       window.__rampkitScreenIndex = ${screenIndex};
       console.log('🔓 Screen ${screenIndex} ACTIVATED');
 
+      // Resume all Lottie animations
+      try {
+        // lottie-web global API
+        if (typeof lottie !== 'undefined' && lottie.play) {
+          lottie.play();
+        }
+        // dotLottie players
+        document.querySelectorAll('dotlottie-player, lottie-player').forEach(function(el) {
+          if (el.play) el.play();
+        });
+        // lottie-web individual animations stored on window
+        if (window.__rampkitLottieAnimations) {
+          window.__rampkitLottieAnimations.forEach(function(anim) {
+            if (anim && anim.play) anim.play();
+          });
+        }
+      } catch(e) { console.log('Lottie play error:', e); }
+
       // Dispatch custom event that HTML can listen to
       try {
         document.dispatchEvent(new CustomEvent('rampkit:screen-visible', {
@@ -1104,7 +1122,7 @@ function Overlay(props) {
         // Process any pending actions for this screen
         processPendingActions(screenIndex);
     };
-    // Deactivate a screen (clear visibility flag)
+    // Deactivate a screen (clear visibility flag and pause Lotties)
     const deactivateScreen = (screenIndex) => {
         const wv = webviewsRef.current[screenIndex];
         if (!wv)
@@ -1115,6 +1133,24 @@ function Overlay(props) {
         const deactivateScript = `(function() {
       window.__rampkitScreenVisible = false;
       console.log('🔒 Screen ${screenIndex} DEACTIVATED');
+
+      // Pause all Lottie animations
+      try {
+        // lottie-web global API
+        if (typeof lottie !== 'undefined' && lottie.pause) {
+          lottie.pause();
+        }
+        // dotLottie players
+        document.querySelectorAll('dotlottie-player, lottie-player').forEach(function(el) {
+          if (el.pause) el.pause();
+        });
+        // lottie-web individual animations stored on window
+        if (window.__rampkitLottieAnimations) {
+          window.__rampkitLottieAnimations.forEach(function(anim) {
+            if (anim && anim.pause) anim.pause();
+          });
+        }
+      } catch(e) { console.log('Lottie pause error:', e); }
     })();`;
         // @ts-ignore: injectJavaScript exists on WebView instance
         wv.injectJavaScript(deactivateScript);
@@ -1322,26 +1358,26 @@ function Overlay(props) {
         const nextScreenAnim = screenAnims[nextIndex];
         const isForward = nextIndex > index;
         const direction = isForward ? 1 : -1;
-        // Slide animation: animate both screens simultaneously
+        // Slide animation: animate both screens simultaneously using full screen width
         if (animationType === "slide") {
             setIsTransitioning(true);
-            // Set up next screen starting position (offscreen in direction of navigation)
-            nextScreenAnim.translateX.setValue(SLIDE_FADE_OFFSET * direction);
+            // Set up next screen starting position (fully offscreen in direction of navigation)
+            nextScreenAnim.translateX.setValue(windowWidth * direction);
             nextScreenAnim.opacity.setValue(1);
-            // Animate both screens
+            // Animate both screens with smooth slide
             react_native_1.Animated.parallel([
-                // Current screen slides out
+                // Current screen slides out (to the opposite side)
                 react_native_1.Animated.timing(currentScreenAnim.translateX, {
-                    toValue: -SLIDE_FADE_OFFSET * direction,
-                    duration: SLIDE_FADE_DURATION,
-                    easing: react_native_1.Easing.out(react_native_1.Easing.ease),
+                    toValue: -windowWidth * direction,
+                    duration: 300,
+                    easing: react_native_1.Easing.out(react_native_1.Easing.cubic),
                     useNativeDriver: true,
                 }),
-                // Next screen slides in
+                // Next screen slides in (from offscreen to center)
                 react_native_1.Animated.timing(nextScreenAnim.translateX, {
                     toValue: 0,
-                    duration: SLIDE_FADE_DURATION,
-                    easing: react_native_1.Easing.out(react_native_1.Easing.ease),
+                    duration: 300,
+                    easing: react_native_1.Easing.out(react_native_1.Easing.cubic),
                     useNativeDriver: true,
                 }),
             ]).start(() => {
@@ -1757,6 +1793,28 @@ function Overlay(props) {
                                 // Other screens will be activated when navigated to.
                                 if (i === 0) {
                                     activateScreen(i);
+                                }
+                                else {
+                                    // For non-active screens, pause Lotties immediately after load
+                                    // (they may have auto-started during page render)
+                                    const wv = webviewsRef.current[i];
+                                    if (wv) {
+                                        const pauseLottiesScript = `(function() {
+                      try {
+                        if (typeof lottie !== 'undefined' && lottie.pause) lottie.pause();
+                        document.querySelectorAll('dotlottie-player, lottie-player').forEach(function(el) {
+                          if (el.pause) el.pause();
+                        });
+                        if (window.__rampkitLottieAnimations) {
+                          window.__rampkitLottieAnimations.forEach(function(anim) {
+                            if (anim && anim.pause) anim.pause();
+                          });
+                        }
+                      } catch(e) {}
+                    })();`;
+                                        // @ts-ignore
+                                        wv.injectJavaScript(pauseLottiesScript);
+                                    }
                                 }
                             }, onMessage: (ev) => {
                                 var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
