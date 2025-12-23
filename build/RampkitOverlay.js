@@ -1716,7 +1716,14 @@ function Overlay(props) {
                             },
                         ], 
                         // Only the active screen receives touch events
-                        pointerEvents: i === index ? 'auto' : 'none', children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: { width: windowWidth, height: windowHeight }, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: exports.injectedHardening + exports.injectedDynamicTapHandler + exports.injectedButtonAnimations, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedButtonAnimations, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
+                        pointerEvents: i === index ? 'auto' : 'none', children: (0, jsx_runtime_1.jsx)(react_native_webview_1.WebView, { ref: (r) => (webviewsRef.current[i] = r), style: { width: windowWidth, height: windowHeight }, originWhitelist: ["*"], source: { html: doc }, injectedJavaScriptBeforeContentLoaded: 
+                            // CRITICAL: Set visibility flag BEFORE content loads (matches iOS SDK behavior)
+                            // Only screen 0 starts as visible, others start hidden.
+                            // This prevents review/notification requests from firing on inactive screens at startup.
+                            `window.__rampkitScreenVisible = ${i === 0};
+                 window.__rampkitScreenIndex = ${i};
+                 console.log('[RampKit] Screen ${i} visibility initialized: ' + (${i === 0} ? 'ACTIVE' : 'INACTIVE'));
+                ` + exports.injectedHardening + exports.injectedDynamicTapHandler + exports.injectedButtonAnimations, injectedJavaScript: exports.injectedNoSelect + exports.injectedVarsHandler + exports.injectedButtonAnimations, automaticallyAdjustContentInsets: false, contentInsetAdjustmentBehavior: "never", bounces: false, scrollEnabled: false, overScrollMode: "never", scalesPageToFit: false, showsHorizontalScrollIndicator: false, dataDetectorTypes: "none", allowsLinkPreview: false, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, cacheEnabled: true, javaScriptEnabled: true, domStorageEnabled: true, hideKeyboardAccessoryView: true, onLoadEnd: () => {
                                 // Only initialize each screen ONCE to avoid repeated processing
                                 if (initializedScreensRef.current.has(i)) {
                                     if (__DEV__)
@@ -1745,24 +1752,11 @@ function Overlay(props) {
                                 // By sending state to all screens upfront, the DOM is already in its final state
                                 // before any navigation occurs.
                                 sendOnboardingStateToWebView(i);
-                                // Set initial visibility flag (matches iOS SDK behavior).
-                                // Only screen 0 starts as active - all others start inactive.
-                                // This prevents actions like review requests from firing on all screens at startup.
+                                // Visibility flag is already set in injectedJavaScriptBeforeContentLoaded.
+                                // For screen 0, dispatch the activation event and process any pending actions.
+                                // Other screens will be activated when navigated to.
                                 if (i === 0) {
-                                    // First screen is immediately active
                                     activateScreen(i);
-                                }
-                                else {
-                                    // Other screens start inactive - inject the flag but don't dispatch event
-                                    const wv = webviewsRef.current[i];
-                                    if (wv) {
-                                        // @ts-ignore: injectJavaScript exists on WebView instance
-                                        wv.injectJavaScript(`(function() {
-                      window.__rampkitScreenVisible = false;
-                      window.__rampkitScreenIndex = ${i};
-                      console.log('🔒 Screen ${i} loaded but INACTIVE');
-                    })();`);
-                                    }
                                 }
                             }, onMessage: (ev) => {
                                 var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
