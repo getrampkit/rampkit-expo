@@ -182,32 +182,6 @@ exports.injectedDynamicTapHandler = `
     if (window.__rampkitClickInterceptorInstalled) return;
     window.__rampkitClickInterceptorInstalled = true;
 
-    // ========== DEBUG: phone-21 (buggy screen) specific logging (REMOVE AFTER BUG FIX) ==========
-    var isBuggyScreen = function() {
-      var screenId = window.__rampkitScreenId || '';
-      var screenIndex = window.__rampkitScreenIndex;
-      return screenId === 'phone-21' || screenIndex === 18;
-    };
-
-    var debugBuggyScreen = function(source, msg, data) {
-      if (isBuggyScreen()) {
-        var logData = { source: source, msg: msg, data: data };
-        console.log('[BUGGY-SCREEN][' + source + '] ' + msg, JSON.stringify(data || {}));
-        // Send to React Native via postMessage for visibility in RN console
-        try {
-          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'rampkit:debug-buggy-screen',
-              source: source,
-              message: msg,
-              data: data
-            }));
-          }
-        } catch(e) {}
-      }
-    };
-    // ========== END DEBUG ==========
-
     // Decode HTML entities
     function decodeHtml(str) {
         if (!str) return str;
@@ -221,49 +195,21 @@ exports.injectedDynamicTapHandler = `
         var current = el;
         var depth = 0;
         var attrNames = ['data-tap-dynamic', 'data-tapdynamic', 'tapDynamic', 'data-dynamic-tap'];
-        var searchTrail = []; // DEBUG: Track search path
-
         while (current && current !== document.body && current !== document.documentElement && depth < 20) {
-            // DEBUG: Build search trail for Screen 19
-            var trailInfo = {
-              depth: depth,
-              tag: current.tagName,
-              id: current.id || '(none)',
-              class: (current.className && typeof current.className === 'string') ? current.className.substring(0,50) : '(none)'
-            };
-            searchTrail.push(trailInfo);
-
             if (current.getAttribute) {
                 for (var i = 0; i < attrNames.length; i++) {
                     var attr = current.getAttribute(attrNames[i]);
                     if (attr && attr.length > 2) {
-                        var rect = current.getBoundingClientRect ? current.getBoundingClientRect() : {};
-                        debugBuggyScreen('DynamicTap', 'FOUND data-tap-dynamic', {
-                          attrName: attrNames[i],
-                          depth: depth,
-                          element: trailInfo,
-                          size: rect.width + 'x' + rect.height,
-                          configPreview: attr.substring(0, 100) + '...',
-                          trail: searchTrail
-                        });
                         return { element: current, config: attr };
                     }
                 }
                 if (current.dataset && current.dataset.tapDynamic) {
-                    var rect2 = current.getBoundingClientRect ? current.getBoundingClientRect() : {};
-                    debugBuggyScreen('DynamicTap', 'FOUND dataset.tapDynamic', {
-                      depth: depth,
-                      element: trailInfo,
-                      size: rect2.width + 'x' + rect2.height,
-                      trail: searchTrail
-                    });
                     return { element: current, config: current.dataset.tapDynamic };
                 }
             }
             current = current.parentElement;
             depth++;
         }
-        debugBuggyScreen('DynamicTap', 'NO data-tap-dynamic found', { trail: searchTrail });
         return null;
     }
     
@@ -403,75 +349,20 @@ exports.injectedDynamicTapHandler = `
     
     // Click interceptor - capture phase, runs BEFORE onclick handlers
     function interceptClick(event) {
-        // ========== DEBUG: phone-21 click logging ==========
-        if (isBuggyScreen()) {
-          var clickX = event.clientX;
-          var clickY = event.clientY;
-          var originalTarget = event.target;
-          var originalRect = originalTarget.getBoundingClientRect ? originalTarget.getBoundingClientRect() : {};
-          debugBuggyScreen('Click', 'Click at (' + clickX + ',' + clickY + ')', {
-            originalTarget: {
-              tag: originalTarget.tagName,
-              id: originalTarget.id || '(none)',
-              class: (originalTarget.className && typeof originalTarget.className === 'string') ? originalTarget.className.substring(0,100) : '(none)',
-              size: originalRect.width + 'x' + originalRect.height
-            }
-          });
-        }
-        // ========== END DEBUG ==========
-
         var result = findDynamicTap(event.target);
         if (!result) return;
-
-        // ========== DEBUG: phone-21 - log when dynamic tap is found ==========
-        if (isBuggyScreen()) {
-          var rect = result.element.getBoundingClientRect ? result.element.getBoundingClientRect() : {};
-          var screenWidth = window.innerWidth;
-          var screenHeight = window.innerHeight;
-          var isFullScreen = (rect.width >= screenWidth * 0.9 && rect.height >= screenHeight * 0.9);
-          debugBuggyScreen('Click', 'DYNAMIC TAP WILL BE HANDLED', {
-            element: {
-              tag: result.element.tagName,
-              id: result.element.id || '(none)',
-              class: (result.element.className && typeof result.element.className === 'string') ? result.element.className.substring(0,100) : '(none)',
-              size: rect.width + 'x' + rect.height
-            },
-            isFullScreen: isFullScreen,
-            WARNING: isFullScreen ? 'FULL SCREEN ELEMENT WITH DYNAMIC TAP - THIS IS THE BUG!' : 'normal element'
-          });
-        }
-        // ========== END DEBUG ==========
 
         try {
             var configStr = decodeHtml(result.config);
             var config = JSON.parse(configStr);
-
-            // ========== DEBUG: phone-21 - log parsed config ==========
-            if (isBuggyScreen()) {
-              debugBuggyScreen('Click', 'Parsed config', {
-                hasValues: !!(config && config.values),
-                valuesCount: config && config.values ? config.values.length : 0,
-                firstCondition: config && config.values && config.values[0] ? {
-                  conditionType: config.values[0].conditionType,
-                  rulesCount: config.values[0].rules ? config.values[0].rules.length : 0,
-                  actionsCount: config.values[0].actions ? config.values[0].actions.length : 0
-                } : null
-              });
-            }
-            // ========== END DEBUG ==========
-
             var handled = evalDynamicTap(config);
             if (handled) {
-                debugBuggyScreen('Click', 'HANDLED by dynamic tap - event stopped', { handled: true });
                 event.stopImmediatePropagation();
                 event.preventDefault();
                 return false;
             }
         } catch (e) {
             console.log('[RampKit] Dynamic tap error:', e);
-            if (isBuggyScreen()) {
-              debugBuggyScreen('Click', 'Dynamic tap parse error', { error: e.message });
-            }
         }
     }
 
@@ -494,36 +385,9 @@ exports.injectedButtonAnimations = `
     var pressedOriginalTransition = '';
     var releaseTimer = null;
 
-    // ========== DEBUG: phone-21 (buggy screen) specific logging (REMOVE AFTER BUG FIX) ==========
-    var isBuggyScreenAnim = function() {
-      var screenId = window.__rampkitScreenId || '';
-      var screenIndex = window.__rampkitScreenIndex;
-      return screenId === 'phone-21' || screenIndex === 18;
-    };
-
-    var debugBuggyScreenAnim = function(source, msg, data) {
-      if (isBuggyScreenAnim()) {
-        console.log('[BUGGY-SCREEN][' + source + '] ' + msg, JSON.stringify(data || {}));
-        // Send to React Native via postMessage for visibility
-        try {
-          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'rampkit:debug-buggy-screen',
-              source: source,
-              message: msg,
-              data: data
-            }));
-          }
-        } catch(e) {}
-      }
-    };
-    // ========== END DEBUG ==========
-
-    // Find interactive element - very permissive, looks for any clickable-looking element
+    // Find interactive element - looks for clickable-looking elements
     function findInteractive(el) {
       var current = el;
-      var debugTrail = []; // DEBUG: Track search path for Screen 19
-
       for (var i = 0; i < 20 && current && current !== document.body && current !== document.documentElement; i++) {
         if (!current || !current.tagName) { current = current.parentElement; continue; }
         var tag = current.tagName.toLowerCase();
@@ -532,54 +396,40 @@ exports.injectedButtonAnimations = `
         var rect = current.getBoundingClientRect();
         if (rect.width < 20 || rect.height < 20) { current = current.parentElement; continue; }
 
-        // DEBUG: Build trail for Screen 19
-        var debugInfo = {
-          depth: i,
-          tag: tag,
-          id: current.id || '(none)',
-          class: (current.className && typeof current.className === 'string') ? current.className.substring(0, 100) : '(none)',
-          size: rect.width + 'x' + rect.height
-        };
-        debugTrail.push(debugInfo);
-
         // Match standard interactive elements
-        if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select') {
-          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: standard tag', { reason: 'tag=' + tag, element: debugInfo, trail: debugTrail });
-          return current;
-        }
+        if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select') return current;
 
-        // Match elements with any data attribute containing action/navigate/tap/click
+        // Match elements with tap/click-related data attributes
+        // Exclude lifecycle attributes like data-on-open-actions, data-on-close-actions
         var attrs = current.attributes;
         if (attrs) {
           for (var j = 0; j < attrs.length; j++) {
             var attrName = attrs[j].name.toLowerCase();
+            // Skip lifecycle attributes (on-open, on-close, on-load, on-appear, etc.)
+            if (attrName.indexOf('on-open') !== -1 || attrName.indexOf('on-close') !== -1 ||
+                attrName.indexOf('on-load') !== -1 || attrName.indexOf('on-appear') !== -1 ||
+                attrName.indexOf('onopen') !== -1 || attrName.indexOf('onclose') !== -1 ||
+                attrName.indexOf('onload') !== -1 || attrName.indexOf('onappear') !== -1) {
+              continue;
+            }
+            // Match tap/click interaction attributes
             if (attrName.indexOf('click') !== -1 || attrName.indexOf('tap') !== -1 ||
                 attrName.indexOf('action') !== -1 || attrName.indexOf('navigate') !== -1 ||
                 attrName.indexOf('press') !== -1) {
-              debugBuggyScreenAnim('ButtonAnim', 'MATCHED: data-attr', { reason: 'attr=' + attrName, value: attrs[j].value.substring(0,50), element: debugInfo, trail: debugTrail });
               return current;
             }
           }
         }
 
         // Match elements with onclick
-        if (current.onclick || current.hasAttribute('onclick')) {
-          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: onclick', { element: debugInfo, trail: debugTrail });
-          return current;
-        }
+        if (current.onclick || current.hasAttribute('onclick')) return current;
 
-        // Match elements with role="button" or tabindex
-        if (current.getAttribute('role') === 'button') {
-          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: role=button', { element: debugInfo, trail: debugTrail });
-          return current;
-        }
+        // Match elements with role="button"
+        if (current.getAttribute('role') === 'button') return current;
 
         // Match any element with an ID containing button/btn/cta
         var id = current.id || '';
-        if (id && (id.toLowerCase().indexOf('button') !== -1 || id.toLowerCase().indexOf('btn') !== -1 || id.toLowerCase().indexOf('cta') !== -1)) {
-          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: button-like ID', { reason: 'id=' + id, element: debugInfo, trail: debugTrail });
-          return current;
-        }
+        if (id && (id.toLowerCase().indexOf('button') !== -1 || id.toLowerCase().indexOf('btn') !== -1 || id.toLowerCase().indexOf('cta') !== -1)) return current;
 
         // Match elements with button-like classes
         var className = current.className;
@@ -587,7 +437,6 @@ exports.injectedButtonAnimations = `
           var cls = className.toLowerCase();
           if (cls.indexOf('btn') !== -1 || cls.indexOf('button') !== -1 || cls.indexOf('cta') !== -1 ||
               cls.indexOf('clickable') !== -1 || cls.indexOf('tappable') !== -1 || cls.indexOf('pressable') !== -1) {
-            debugBuggyScreenAnim('ButtonAnim', 'MATCHED: button-like class', { reason: 'class=' + className, element: debugInfo, trail: debugTrail });
             return current;
           }
         }
@@ -595,18 +444,14 @@ exports.injectedButtonAnimations = `
         // Match elements with cursor pointer
         try {
           var computed = window.getComputedStyle(current);
-          if (computed && computed.cursor === 'pointer') {
-            debugBuggyScreenAnim('ButtonAnim', 'MATCHED: cursor:pointer', { element: debugInfo, trail: debugTrail });
-            return current;
-          }
+          if (computed && computed.cursor === 'pointer') return current;
         } catch(e) {}
 
         current = current.parentElement;
       }
-      debugBuggyScreenAnim('ButtonAnim', 'NO MATCH found', { originalTag: el.tagName, trail: debugTrail });
       return null;
     }
-    
+
     function applyPressedStyle(el) {
       if (!el || !el.style) return;
       // Save original styles
@@ -618,7 +463,7 @@ exports.injectedButtonAnimations = `
       el.style.transform = 'scale(0.97)';
       el.style.opacity = '0.8';
     }
-    
+
     function applyReleasedStyle(el) {
       if (!el || !el.style) return;
       // Apply spring-back animation
@@ -626,53 +471,18 @@ exports.injectedButtonAnimations = `
       el.style.transform = pressedOriginalTransform || 'scale(1)';
       el.style.opacity = pressedOriginalOpacity || '1';
     }
-    
+
     function resetStyle(el) {
       if (!el || !el.style) return;
       el.style.transform = pressedOriginalTransform;
       el.style.opacity = pressedOriginalOpacity;
       el.style.transition = pressedOriginalTransition;
     }
-    
+
     function onTouchStart(e) {
       try {
-        // ========== DEBUG: phone-21 touch logging ==========
-        if (isBuggyScreenAnim()) {
-          var touchX = e.touches ? e.touches[0].clientX : e.clientX;
-          var touchY = e.touches ? e.touches[0].clientY : e.clientY;
-          var originalTarget = e.target;
-          var originalRect = originalTarget.getBoundingClientRect ? originalTarget.getBoundingClientRect() : {};
-          debugBuggyScreenAnim('TouchStart', 'Touch at (' + touchX + ',' + touchY + ')', {
-            originalTarget: {
-              tag: originalTarget.tagName,
-              id: originalTarget.id || '(none)',
-              class: (originalTarget.className && typeof originalTarget.className === 'string') ? originalTarget.className.substring(0,100) : '(none)',
-              size: originalRect.width + 'x' + originalRect.height
-            }
-          });
-        }
-        // ========== END DEBUG ==========
-
         var target = findInteractive(e.target);
         if (!target) return;
-
-        // ========== DEBUG: phone-21 - log what element was found interactive ==========
-        if (isBuggyScreenAnim() && target) {
-          var targetRect = target.getBoundingClientRect();
-          var screenWidth = window.innerWidth;
-          var screenHeight = window.innerHeight;
-          var isFullScreen = (targetRect.width >= screenWidth * 0.9 && targetRect.height >= screenHeight * 0.9);
-          debugBuggyScreenAnim('TouchStart', 'INTERACTIVE ELEMENT FOUND', {
-            tag: target.tagName,
-            id: target.id || '(none)',
-            class: (target.className && typeof target.className === 'string') ? target.className.substring(0,100) : '(none)',
-            size: targetRect.width + 'x' + targetRect.height,
-            isFullScreen: isFullScreen,
-            WARNING: isFullScreen ? 'FULL SCREEN ELEMENT DETECTED - THIS IS THE BUG!' : 'normal element'
-          });
-        }
-        // ========== END DEBUG ==========
-
         if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = null; }
         if (pressed && pressed !== target) { resetStyle(pressed); }
         applyPressedStyle(target);
@@ -2017,29 +1827,9 @@ function Overlay(props) {
                                     }
                                 }
                             }, onMessage: (ev) => {
-                                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+                                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
                                 const raw = ev.nativeEvent.data;
                                 console.log("raw", raw);
-                                // ========== DEBUG: phone-21 onMessage logging (REMOVE AFTER BUG FIX) ==========
-                                const screenId = ((_a = props.screens[i]) === null || _a === void 0 ? void 0 : _a.id) || "";
-                                const isBuggyScreenOnMsg = screenId === 'phone-21' || i === 18;
-                                if (isBuggyScreenOnMsg) {
-                                    console.log(`[BUGGY-SCREEN][onMessage] Received message from screen ${i} (ID: ${screenId})`, JSON.stringify({
-                                        rawPreview: raw.substring(0, 200),
-                                        isActiveScreen: i === activeScreenIndexRef.current,
-                                        activeScreenIndex: activeScreenIndexRef.current
-                                    }));
-                                }
-                                // Also handle debug messages from WebView
-                                try {
-                                    const debugData = JSON.parse(raw);
-                                    if ((debugData === null || debugData === void 0 ? void 0 : debugData.type) === 'rampkit:debug-buggy-screen') {
-                                        console.log(`[BUGGY-SCREEN][${debugData.source}] ${debugData.message}`, JSON.stringify(debugData.data || {}));
-                                        return; // Don't process further, it's just a debug message
-                                    }
-                                }
-                                catch (_) { }
-                                // ========== END DEBUG ==========
                                 // Accept either raw strings or JSON payloads from your editor
                                 try {
                                     // JSON path
@@ -2165,7 +1955,7 @@ function Overlay(props) {
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:onboarding-finished") {
                                         setOnboardingCompleted(true);
                                         try {
-                                            (_b = props.onOnboardingFinished) === null || _b === void 0 ? void 0 : _b.call(props, data === null || data === void 0 ? void 0 : data.payload);
+                                            (_a = props.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(props, data === null || data === void 0 ? void 0 : data.payload);
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true });
@@ -2174,7 +1964,7 @@ function Overlay(props) {
                                     // 6) Request to show paywall
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:show-paywall") {
                                         try {
-                                            (_c = props.onShowPaywall) === null || _c === void 0 ? void 0 : _c.call(props, data === null || data === void 0 ? void 0 : data.payload);
+                                            (_b = props.onShowPaywall) === null || _b === void 0 ? void 0 : _b.call(props, data === null || data === void 0 ? void 0 : data.payload);
                                         }
                                         catch (_) { }
                                         return;
@@ -2185,9 +1975,9 @@ function Overlay(props) {
                                         if (questionId) {
                                             const response = {
                                                 questionId,
-                                                answer: (_d = data === null || data === void 0 ? void 0 : data.answer) !== null && _d !== void 0 ? _d : "",
+                                                answer: (_c = data === null || data === void 0 ? void 0 : data.answer) !== null && _c !== void 0 ? _c : "",
                                                 questionText: data === null || data === void 0 ? void 0 : data.questionText,
-                                                screenName: (_e = props.screens[i]) === null || _e === void 0 ? void 0 : _e.id,
+                                                screenName: (_d = props.screens[i]) === null || _d === void 0 ? void 0 : _d.id,
                                                 answeredAt: new Date().toISOString(),
                                             };
                                             OnboardingResponseStorage_1.OnboardingResponseStorage.saveResponse(response);
@@ -2202,14 +1992,6 @@ function Overlay(props) {
                                                 console.log(`[RampKit] Ignoring continue from inactive screen ${i}`);
                                             return;
                                         }
-                                        // ========== DEBUG: phone-21 continue logging ==========
-                                        if (isBuggyScreenOnMsg) {
-                                            console.log(`[BUGGY-SCREEN][onMessage] CONTINUE action triggered from screen ${i}`, JSON.stringify({
-                                                animation: (data === null || data === void 0 ? void 0 : data.animation) || "fade",
-                                                screenId: screenId
-                                            }));
-                                        }
-                                        // ========== END DEBUG ==========
                                         handleAdvance(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                         return;
                                     }
@@ -2221,15 +2003,6 @@ function Overlay(props) {
                                             return;
                                         }
                                         const target = data === null || data === void 0 ? void 0 : data.targetScreenId;
-                                        // ========== DEBUG: phone-21 navigate logging ==========
-                                        if (isBuggyScreenOnMsg) {
-                                            console.log(`[BUGGY-SCREEN][onMessage] NAVIGATE action triggered from screen ${i}`, JSON.stringify({
-                                                target: target,
-                                                animation: (data === null || data === void 0 ? void 0 : data.animation) || "fade",
-                                                screenId: screenId
-                                            }));
-                                        }
-                                        // ========== END DEBUG ==========
                                         if (target === "__goBack__") {
                                             handleGoBack(i, (data === null || data === void 0 ? void 0 : data.animation) || "fade");
                                             return;
@@ -2260,7 +2033,7 @@ function Overlay(props) {
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:close") {
                                         // Track close action for onboarding completion
                                         try {
-                                            (_f = props.onCloseAction) === null || _f === void 0 ? void 0 : _f.call(props, i, ((_g = props.screens[i]) === null || _g === void 0 ? void 0 : _g.id) || "");
+                                            (_e = props.onCloseAction) === null || _e === void 0 ? void 0 : _e.call(props, i, ((_f = props.screens[i]) === null || _f === void 0 ? void 0 : _f.id) || "");
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked
@@ -2271,7 +2044,7 @@ function Overlay(props) {
                                         return;
                                     }
                                 }
-                                catch (_m) {
+                                catch (_l) {
                                     // String path
                                     if (raw === "rampkit:tap" ||
                                         raw === "next" ||
@@ -2322,7 +2095,7 @@ function Overlay(props) {
                                     if (raw === "rampkit:onboarding-finished") {
                                         setOnboardingCompleted(true);
                                         try {
-                                            (_h = props.onOnboardingFinished) === null || _h === void 0 ? void 0 : _h.call(props, undefined);
+                                            (_g = props.onOnboardingFinished) === null || _g === void 0 ? void 0 : _g.call(props, undefined);
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true });
@@ -2330,7 +2103,7 @@ function Overlay(props) {
                                     }
                                     if (raw === "rampkit:show-paywall") {
                                         try {
-                                            (_j = props.onShowPaywall) === null || _j === void 0 ? void 0 : _j.call(props);
+                                            (_h = props.onShowPaywall) === null || _h === void 0 ? void 0 : _h.call(props);
                                         }
                                         catch (_) { }
                                         return;
@@ -2373,7 +2146,7 @@ function Overlay(props) {
                                     if (raw === "rampkit:close") {
                                         // Track close action for onboarding completion
                                         try {
-                                            (_k = props.onCloseAction) === null || _k === void 0 ? void 0 : _k.call(props, i, ((_l = props.screens[i]) === null || _l === void 0 ? void 0 : _l.id) || "");
+                                            (_j = props.onCloseAction) === null || _j === void 0 ? void 0 : _j.call(props, i, ((_k = props.screens[i]) === null || _k === void 0 ? void 0 : _k.id) || "");
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked
