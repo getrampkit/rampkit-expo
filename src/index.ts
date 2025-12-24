@@ -46,8 +46,6 @@ export type {
   // Navigation types for spatial layout-based navigation
   NavigationData,
   ScreenPosition,
-  // Onboarding response storage types
-  OnboardingResponse,
   // Event property types
   AppSessionStartedProperties,
   OnboardingStartedProperties,
@@ -61,6 +59,9 @@ export type {
   PurchaseFailedProperties,
   PurchaseRestoredProperties,
 } from "./types";
+
+// Export onboarding state types
+export type { OnboardingState } from "./OnboardingResponseStorage";
 
 // Export constants
 export { SDK_VERSION, CAPABILITIES } from "./constants";

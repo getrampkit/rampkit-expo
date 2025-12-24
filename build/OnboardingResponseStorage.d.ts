@@ -1,24 +1,42 @@
 /**
  * OnboardingResponseStorage
- * Manages persistent storage of onboarding responses
+ * Manages persistent storage of onboarding state variables
  */
-import { OnboardingResponse } from "./types";
 /**
- * Manages persistent storage of onboarding responses
+ * Represents the stored onboarding state
+ */
+export interface OnboardingState {
+    /** The state variables as key-value pairs */
+    variables: Record<string, any>;
+    /** ISO 8601 timestamp when the state was last updated */
+    updatedAt: string;
+}
+/**
+ * Manages persistent storage of onboarding state variables
  */
 export declare const OnboardingResponseStorage: {
     /**
-     * Save a new response, merging with existing responses
-     * If a response with the same questionId exists, it will be updated
+     * Initialize the state with initial values from onboarding config
+     * This should be called when onboarding starts
      */
-    saveResponse(response: OnboardingResponse): Promise<void>;
+    initializeState(initialVariables: Record<string, any>): Promise<void>;
     /**
-     * Retrieve all stored responses
-     * @returns Array of OnboardingResponse objects, empty array if none found
+     * Update state with new variable values (merges with existing)
      */
-    retrieveResponses(): Promise<OnboardingResponse[]>;
+    updateState(newVariables: Record<string, any>): Promise<void>;
     /**
-     * Clear all stored responses
+     * Retrieve the stored state
+     * @returns OnboardingState object with variables and timestamp
      */
+    retrieveState(): Promise<OnboardingState>;
+    /**
+     * Retrieve just the variables (convenience method)
+     * @returns Record of variable name to value
+     */
+    retrieveVariables(): Promise<Record<string, any>>;
+    /**
+     * Clear all stored state
+     */
+    clearState(): Promise<void>;
     clearResponses(): Promise<void>;
 };

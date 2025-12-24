@@ -1,70 +1,98 @@
 "use strict";
 /**
  * OnboardingResponseStorage
- * Manages persistent storage of onboarding responses
+ * Manages persistent storage of onboarding state variables
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OnboardingResponseStorage = void 0;
 const RampKitNative_1 = require("./RampKitNative");
 const constants_1 = require("./constants");
 /**
- * Manages persistent storage of onboarding responses
+ * Manages persistent storage of onboarding state variables
  */
 exports.OnboardingResponseStorage = {
     /**
-     * Save a new response, merging with existing responses
-     * If a response with the same questionId exists, it will be updated
+     * Initialize the state with initial values from onboarding config
+     * This should be called when onboarding starts
      */
-    async saveResponse(response) {
+    async initializeState(initialVariables) {
         try {
-            const responses = await this.retrieveResponses();
-            // Update existing response for same questionId or append new
-            const existingIndex = responses.findIndex((r) => r.questionId === response.questionId);
-            if (existingIndex >= 0) {
-                responses[existingIndex] = response;
-            }
-            else {
-                responses.push(response);
-            }
-            // Serialize and save
-            await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES, JSON.stringify(responses));
+            const state = {
+                variables: { ...initialVariables },
+                updatedAt: new Date().toISOString(),
+            };
+            await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES, JSON.stringify(state));
             if (__DEV__) {
-                console.log(`[RampKit] Saved response for question: ${response.questionId}`);
+                console.log("[RampKit] Initialized onboarding state:", initialVariables);
             }
         }
         catch (error) {
-            console.warn("[RampKit] Failed to save onboarding response:", error);
+            console.warn("[RampKit] Failed to initialize onboarding state:", error);
         }
     },
     /**
-     * Retrieve all stored responses
-     * @returns Array of OnboardingResponse objects, empty array if none found
+     * Update state with new variable values (merges with existing)
      */
-    async retrieveResponses() {
+    async updateState(newVariables) {
+        try {
+            const currentState = await this.retrieveState();
+            const updatedState = {
+                variables: {
+                    ...currentState.variables,
+                    ...newVariables,
+                },
+                updatedAt: new Date().toISOString(),
+            };
+            await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES, JSON.stringify(updatedState));
+            if (__DEV__) {
+                console.log("[RampKit] Updated onboarding state:", newVariables);
+            }
+        }
+        catch (error) {
+            console.warn("[RampKit] Failed to update onboarding state:", error);
+        }
+    },
+    /**
+     * Retrieve the stored state
+     * @returns OnboardingState object with variables and timestamp
+     */
+    async retrieveState() {
         try {
             const jsonString = await (0, RampKitNative_1.getStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES);
             if (!jsonString) {
-                return [];
+                return { variables: {}, updatedAt: "" };
             }
             return JSON.parse(jsonString);
         }
         catch (error) {
-            console.warn("[RampKit] Failed to retrieve onboarding responses:", error);
-            return [];
+            console.warn("[RampKit] Failed to retrieve onboarding state:", error);
+            return { variables: {}, updatedAt: "" };
         }
     },
     /**
-     * Clear all stored responses
+     * Retrieve just the variables (convenience method)
+     * @returns Record of variable name to value
      */
-    async clearResponses() {
+    async retrieveVariables() {
+        const state = await this.retrieveState();
+        return state.variables;
+    },
+    /**
+     * Clear all stored state
+     */
+    async clearState() {
         try {
             await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES, "");
             if (__DEV__) {
-                console.log("[RampKit] Cleared all onboarding responses");
+                console.log("[RampKit] Cleared onboarding state");
             }
         }
         catch (error) {
-            console.warn("[RampKit] Failed to clear onboarding responses:", error);
+            console.warn("[RampKit] Failed to clear onboarding state:", error);
         }
+    },
+    // Legacy aliases for backwards compatibility
+    async clearResponses() {
+        return this.clearState();
     },
 };

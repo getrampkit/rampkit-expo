@@ -17,7 +17,8 @@ import {
 } from "./DeviceInfoCollector";
 import { eventManager } from "./EventManager";
 import { TransactionObserver } from "./RampKitNative";
-import { DeviceInfo, RampKitConfig, EventContext, RampKitContext, NavigationData, OnboardingResponse } from "./types";
+import { DeviceInfo, RampKitConfig, EventContext, RampKitContext, NavigationData } from "./types";
+import { OnboardingState } from "./OnboardingResponseStorage";
 import { ENDPOINTS, SUPABASE_ANON_KEY, MANIFEST_BASE_URL } from "./constants";
 import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
 
@@ -272,11 +273,26 @@ export class RampKitCore {
   }
 
   /**
-   * Get all stored onboarding responses
-   * @returns Promise resolving to array of OnboardingResponse objects
+   * Get all stored onboarding state variables
+   * @returns Promise resolving to OnboardingState with variables and timestamp
    */
-  async getOnboardingResponses(): Promise<OnboardingResponse[]> {
-    return OnboardingResponseStorage.retrieveResponses();
+  async getOnboardingState(): Promise<OnboardingState> {
+    return OnboardingResponseStorage.retrieveState();
+  }
+
+  /**
+   * Get just the onboarding variables (convenience method)
+   * @returns Promise resolving to Record of variable name to value
+   */
+  async getOnboardingVariables(): Promise<Record<string, any>> {
+    return OnboardingResponseStorage.retrieveVariables();
+  }
+
+  /**
+   * @deprecated Use getOnboardingState() or getOnboardingVariables() instead
+   */
+  async getOnboardingResponses(): Promise<Record<string, any>> {
+    return OnboardingResponseStorage.retrieveVariables();
   }
 
   /**
@@ -305,6 +321,9 @@ export class RampKitCore {
           return {} as Record<string, any>;
         }
       })();
+
+      // Initialize state storage with initial values
+      OnboardingResponseStorage.initializeState(variables);
 
       const screens = data.screens.map((s: any) => ({
         id: s.id,

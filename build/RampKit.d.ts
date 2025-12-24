@@ -2,7 +2,8 @@
  * RampKit Core SDK
  * Main SDK class for RampKit Expo integration
  */
-import { DeviceInfo, RampKitConfig, EventContext, OnboardingResponse } from "./types";
+import { DeviceInfo, RampKitConfig, EventContext } from "./types";
+import { OnboardingState } from "./OnboardingResponseStorage";
 export declare class RampKitCore {
     private static _instance;
     private config;
@@ -62,10 +63,19 @@ export declare class RampKitCore {
      */
     isInitialized(): boolean;
     /**
-     * Get all stored onboarding responses
-     * @returns Promise resolving to array of OnboardingResponse objects
+     * Get all stored onboarding state variables
+     * @returns Promise resolving to OnboardingState with variables and timestamp
      */
-    getOnboardingResponses(): Promise<OnboardingResponse[]>;
+    getOnboardingState(): Promise<OnboardingState>;
+    /**
+     * Get just the onboarding variables (convenience method)
+     * @returns Promise resolving to Record of variable name to value
+     */
+    getOnboardingVariables(): Promise<Record<string, any>>;
+    /**
+     * @deprecated Use getOnboardingState() or getOnboardingVariables() instead
+     */
+    getOnboardingResponses(): Promise<Record<string, any>>;
     /**
      * Show the onboarding overlay
      */

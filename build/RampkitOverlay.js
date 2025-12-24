@@ -1948,7 +1948,7 @@ function Overlay(props) {
                                     }
                                 }
                             }, onMessage: (ev) => {
-                                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+                                var _a, _b, _c, _d, _e, _f, _g, _h;
                                 const raw = ev.nativeEvent.data;
                                 console.log("raw", raw);
                                 // Accept either raw strings or JSON payloads from your editor
@@ -2014,6 +2014,8 @@ function Overlay(props) {
                                             if (__DEV__) {
                                                 console.log("[Rampkit] variables updated:", newVars);
                                             }
+                                            // Persist state updates to storage
+                                            OnboardingResponseStorage_1.OnboardingResponseStorage.updateState(newVars);
                                             // CRITICAL: Send merged vars back to the active screen
                                             // This ensures window.__rampkitVariables has the complete state
                                             // which is needed for dynamic tap conditions to evaluate correctly
@@ -2082,21 +2084,6 @@ function Overlay(props) {
                                         catch (_) { }
                                         return;
                                     }
-                                    // 7) Question answered - persist response locally
-                                    if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:question-answered") {
-                                        const questionId = data === null || data === void 0 ? void 0 : data.questionId;
-                                        if (questionId) {
-                                            const response = {
-                                                questionId,
-                                                answer: (_c = data === null || data === void 0 ? void 0 : data.answer) !== null && _c !== void 0 ? _c : "",
-                                                questionText: data === null || data === void 0 ? void 0 : data.questionText,
-                                                screenName: (_d = props.screens[i]) === null || _d === void 0 ? void 0 : _d.id,
-                                                answeredAt: new Date().toISOString(),
-                                            };
-                                            OnboardingResponseStorage_1.OnboardingResponseStorage.saveResponse(response);
-                                        }
-                                        return;
-                                    }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:continue" ||
                                         (data === null || data === void 0 ? void 0 : data.type) === "continue") {
                                         // Only process from active screen (on-open actions are handled by SDK in activateScreen)
@@ -2146,7 +2133,7 @@ function Overlay(props) {
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:close") {
                                         // Track close action for onboarding completion
                                         try {
-                                            (_e = props.onCloseAction) === null || _e === void 0 ? void 0 : _e.call(props, i, ((_f = props.screens[i]) === null || _f === void 0 ? void 0 : _f.id) || "");
+                                            (_c = props.onCloseAction) === null || _c === void 0 ? void 0 : _c.call(props, i, ((_d = props.screens[i]) === null || _d === void 0 ? void 0 : _d.id) || "");
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked
@@ -2157,7 +2144,7 @@ function Overlay(props) {
                                         return;
                                     }
                                 }
-                                catch (_l) {
+                                catch (_j) {
                                     // String path
                                     if (raw === "rampkit:tap" ||
                                         raw === "next" ||
@@ -2202,7 +2189,7 @@ function Overlay(props) {
                                     if (raw === "rampkit:onboarding-finished") {
                                         setOnboardingCompleted(true);
                                         try {
-                                            (_g = props.onOnboardingFinished) === null || _g === void 0 ? void 0 : _g.call(props, undefined);
+                                            (_e = props.onOnboardingFinished) === null || _e === void 0 ? void 0 : _e.call(props, undefined);
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true });
@@ -2210,7 +2197,7 @@ function Overlay(props) {
                                     }
                                     if (raw === "rampkit:show-paywall") {
                                         try {
-                                            (_h = props.onShowPaywall) === null || _h === void 0 ? void 0 : _h.call(props);
+                                            (_f = props.onShowPaywall) === null || _f === void 0 ? void 0 : _f.call(props);
                                         }
                                         catch (_) { }
                                         return;
@@ -2253,7 +2240,7 @@ function Overlay(props) {
                                     if (raw === "rampkit:close") {
                                         // Track close action for onboarding completion
                                         try {
-                                            (_j = props.onCloseAction) === null || _j === void 0 ? void 0 : _j.call(props, i, ((_k = props.screens[i]) === null || _k === void 0 ? void 0 : _k.id) || "");
+                                            (_g = props.onCloseAction) === null || _g === void 0 ? void 0 : _g.call(props, i, ((_h = props.screens[i]) === null || _h === void 0 ? void 0 : _h.id) || "");
                                         }
                                         catch (_) { }
                                         handleRequestClose({ completed: true }); // Mark as completed so abandonment isn't tracked

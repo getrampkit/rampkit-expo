@@ -5,7 +5,7 @@ import RootSiblings from "react-native-root-siblings";
 // before any navigation. This fixes the "glitch on first open" bug.
 import { WebView } from "react-native-webview";
 import { Haptics, StoreReview, Notifications } from "./RampKitNative";
-import { RampKitContext, NavigationData, OnboardingResponse } from "./types";
+import { RampKitContext, NavigationData } from "./types";
 import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
 
 // Reuse your injected script from App
@@ -2285,7 +2285,10 @@ function Overlay(props: {
                       if (__DEV__) {
                         console.log("[Rampkit] variables updated:", newVars);
                       }
-                      
+
+                      // Persist state updates to storage
+                      OnboardingResponseStorage.updateState(newVars);
+
                       // CRITICAL: Send merged vars back to the active screen
                       // This ensures window.__rampkitVariables has the complete state
                       // which is needed for dynamic tap conditions to evaluate correctly
@@ -2349,21 +2352,6 @@ function Overlay(props: {
                     try {
                       props.onShowPaywall?.(data?.payload);
                     } catch (_) {}
-                    return;
-                  }
-                  // 7) Question answered - persist response locally
-                  if (data?.type === "rampkit:question-answered") {
-                    const questionId = data?.questionId;
-                    if (questionId) {
-                      const response: OnboardingResponse = {
-                        questionId,
-                        answer: data?.answer ?? "",
-                        questionText: data?.questionText,
-                        screenName: props.screens[i]?.id,
-                        answeredAt: new Date().toISOString(),
-                      };
-                      OnboardingResponseStorage.saveResponse(response);
-                    }
                     return;
                   }
                   if (

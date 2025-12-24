@@ -271,18 +271,3 @@ export interface ScreenPosition {
     /** Row classification: "main" for main row screens, "variant" for screens below */
     row: "main" | "variant";
 }
-/**
- * Represents a single onboarding question response stored locally
- */
-export interface OnboardingResponse {
-    /** Unique identifier for the question */
-    questionId: string;
-    /** The user's answer (can be any JSON-serializable value) */
-    answer: any;
-    /** Optional text of the question shown to user */
-    questionText?: string;
-    /** Screen where the question was answered */
-    screenName?: string;
-    /** ISO 8601 timestamp when the answer was recorded */
-    answeredAt: string;
-}

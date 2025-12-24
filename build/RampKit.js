@@ -221,11 +221,24 @@ class RampKitCore {
         return this.initialized;
     }
     /**
-     * Get all stored onboarding responses
-     * @returns Promise resolving to array of OnboardingResponse objects
+     * Get all stored onboarding state variables
+     * @returns Promise resolving to OnboardingState with variables and timestamp
+     */
+    async getOnboardingState() {
+        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveState();
+    }
+    /**
+     * Get just the onboarding variables (convenience method)
+     * @returns Promise resolving to Record of variable name to value
+     */
+    async getOnboardingVariables() {
+        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveVariables();
+    }
+    /**
+     * @deprecated Use getOnboardingState() or getOnboardingVariables() instead
      */
     async getOnboardingResponses() {
-        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveResponses();
+        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveVariables();
     }
     /**
      * Show the onboarding overlay
@@ -251,6 +264,8 @@ class RampKitCore {
                     return {};
                 }
             })();
+            // Initialize state storage with initial values
+            OnboardingResponseStorage_1.OnboardingResponseStorage.initializeState(variables);
             const screens = data.screens.map((s) => ({
                 id: s.id,
                 html: s.html ||
