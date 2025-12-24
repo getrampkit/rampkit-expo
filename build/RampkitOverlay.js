@@ -182,20 +182,28 @@ exports.injectedDynamicTapHandler = `
     if (window.__rampkitClickInterceptorInstalled) return;
     window.__rampkitClickInterceptorInstalled = true;
 
-    // ========== DEBUG: Screen 19 specific logging (REMOVE AFTER BUG FIX) ==========
-    var isScreen19Dynamic = function() {
+    // ========== DEBUG: phone-21 (buggy screen) specific logging (REMOVE AFTER BUG FIX) ==========
+    var isBuggyScreen = function() {
       var screenId = window.__rampkitScreenId || '';
       var screenIndex = window.__rampkitScreenIndex;
-      return screenId.indexOf('19') !== -1 ||
-             screenId.toLowerCase().indexOf('screen 19') !== -1 ||
-             screenId.toLowerCase().indexOf('screen19') !== -1 ||
-             screenIndex === 19 ||
-             screenIndex === 18;
+      return screenId === 'phone-21' || screenIndex === 18;
     };
 
-    var debugScreen19Dynamic = function(msg, data) {
-      if (isScreen19Dynamic()) {
-        console.log('[SCREEN19-DEBUG][DynamicTap] ' + msg, JSON.stringify(data || {}));
+    var debugBuggyScreen = function(source, msg, data) {
+      if (isBuggyScreen()) {
+        var logData = { source: source, msg: msg, data: data };
+        console.log('[BUGGY-SCREEN][' + source + '] ' + msg, JSON.stringify(data || {}));
+        // Send to React Native via postMessage for visibility in RN console
+        try {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'rampkit:debug-buggy-screen',
+              source: source,
+              message: msg,
+              data: data
+            }));
+          }
+        } catch(e) {}
       }
     };
     // ========== END DEBUG ==========
@@ -230,7 +238,7 @@ exports.injectedDynamicTapHandler = `
                     var attr = current.getAttribute(attrNames[i]);
                     if (attr && attr.length > 2) {
                         var rect = current.getBoundingClientRect ? current.getBoundingClientRect() : {};
-                        debugScreen19Dynamic('FOUND data-tap-dynamic', {
+                        debugBuggyScreen('DynamicTap', 'FOUND data-tap-dynamic', {
                           attrName: attrNames[i],
                           depth: depth,
                           element: trailInfo,
@@ -243,7 +251,7 @@ exports.injectedDynamicTapHandler = `
                 }
                 if (current.dataset && current.dataset.tapDynamic) {
                     var rect2 = current.getBoundingClientRect ? current.getBoundingClientRect() : {};
-                    debugScreen19Dynamic('FOUND dataset.tapDynamic', {
+                    debugBuggyScreen('DynamicTap', 'FOUND dataset.tapDynamic', {
                       depth: depth,
                       element: trailInfo,
                       size: rect2.width + 'x' + rect2.height,
@@ -255,7 +263,7 @@ exports.injectedDynamicTapHandler = `
             current = current.parentElement;
             depth++;
         }
-        debugScreen19Dynamic('NO data-tap-dynamic found', { trail: searchTrail });
+        debugBuggyScreen('DynamicTap', 'NO data-tap-dynamic found', { trail: searchTrail });
         return null;
     }
     
@@ -395,33 +403,33 @@ exports.injectedDynamicTapHandler = `
     
     // Click interceptor - capture phase, runs BEFORE onclick handlers
     function interceptClick(event) {
-        // ========== DEBUG: Screen 19 click logging ==========
-        if (isScreen19Dynamic()) {
+        // ========== DEBUG: phone-21 click logging ==========
+        if (isBuggyScreen()) {
           var clickX = event.clientX;
           var clickY = event.clientY;
           var originalTarget = event.target;
           var originalRect = originalTarget.getBoundingClientRect ? originalTarget.getBoundingClientRect() : {};
-          console.log('[SCREEN19-DEBUG][Click] Click at (' + clickX + ',' + clickY + ')', JSON.stringify({
+          debugBuggyScreen('Click', 'Click at (' + clickX + ',' + clickY + ')', {
             originalTarget: {
               tag: originalTarget.tagName,
               id: originalTarget.id || '(none)',
               class: (originalTarget.className && typeof originalTarget.className === 'string') ? originalTarget.className.substring(0,100) : '(none)',
               size: originalRect.width + 'x' + originalRect.height
             }
-          }));
+          });
         }
         // ========== END DEBUG ==========
 
         var result = findDynamicTap(event.target);
         if (!result) return;
 
-        // ========== DEBUG: Screen 19 - log when dynamic tap is found ==========
-        if (isScreen19Dynamic()) {
+        // ========== DEBUG: phone-21 - log when dynamic tap is found ==========
+        if (isBuggyScreen()) {
           var rect = result.element.getBoundingClientRect ? result.element.getBoundingClientRect() : {};
           var screenWidth = window.innerWidth;
           var screenHeight = window.innerHeight;
           var isFullScreen = (rect.width >= screenWidth * 0.9 && rect.height >= screenHeight * 0.9);
-          console.log('[SCREEN19-DEBUG][Click] DYNAMIC TAP WILL BE HANDLED', JSON.stringify({
+          debugBuggyScreen('Click', 'DYNAMIC TAP WILL BE HANDLED', {
             element: {
               tag: result.element.tagName,
               id: result.element.id || '(none)',
@@ -430,7 +438,7 @@ exports.injectedDynamicTapHandler = `
             },
             isFullScreen: isFullScreen,
             WARNING: isFullScreen ? 'FULL SCREEN ELEMENT WITH DYNAMIC TAP - THIS IS THE BUG!' : 'normal element'
-          }));
+          });
         }
         // ========== END DEBUG ==========
 
@@ -438,9 +446,9 @@ exports.injectedDynamicTapHandler = `
             var configStr = decodeHtml(result.config);
             var config = JSON.parse(configStr);
 
-            // ========== DEBUG: Screen 19 - log parsed config ==========
-            if (isScreen19Dynamic()) {
-              console.log('[SCREEN19-DEBUG][Click] Parsed config:', JSON.stringify({
+            // ========== DEBUG: phone-21 - log parsed config ==========
+            if (isBuggyScreen()) {
+              debugBuggyScreen('Click', 'Parsed config', {
                 hasValues: !!(config && config.values),
                 valuesCount: config && config.values ? config.values.length : 0,
                 firstCondition: config && config.values && config.values[0] ? {
@@ -448,21 +456,21 @@ exports.injectedDynamicTapHandler = `
                   rulesCount: config.values[0].rules ? config.values[0].rules.length : 0,
                   actionsCount: config.values[0].actions ? config.values[0].actions.length : 0
                 } : null
-              }));
+              });
             }
             // ========== END DEBUG ==========
 
             var handled = evalDynamicTap(config);
             if (handled) {
-                debugScreen19Dynamic('Click HANDLED by dynamic tap - event stopped', { handled: true });
+                debugBuggyScreen('Click', 'HANDLED by dynamic tap - event stopped', { handled: true });
                 event.stopImmediatePropagation();
                 event.preventDefault();
                 return false;
             }
         } catch (e) {
             console.log('[RampKit] Dynamic tap error:', e);
-            if (isScreen19Dynamic()) {
-              console.log('[SCREEN19-DEBUG][Click] Dynamic tap parse error:', e.message);
+            if (isBuggyScreen()) {
+              debugBuggyScreen('Click', 'Dynamic tap parse error', { error: e.message });
             }
         }
     }
@@ -486,21 +494,27 @@ exports.injectedButtonAnimations = `
     var pressedOriginalTransition = '';
     var releaseTimer = null;
 
-    // ========== DEBUG: Screen 19 specific logging (REMOVE AFTER BUG FIX) ==========
-    var isScreen19 = function() {
-      // Check multiple ways to identify Screen 19
+    // ========== DEBUG: phone-21 (buggy screen) specific logging (REMOVE AFTER BUG FIX) ==========
+    var isBuggyScreenAnim = function() {
       var screenId = window.__rampkitScreenId || '';
       var screenIndex = window.__rampkitScreenIndex;
-      return screenId.indexOf('19') !== -1 ||
-             screenId.toLowerCase().indexOf('screen 19') !== -1 ||
-             screenId.toLowerCase().indexOf('screen19') !== -1 ||
-             screenIndex === 19 ||
-             screenIndex === 18; // 0-indexed, so screen 19 would be index 18
+      return screenId === 'phone-21' || screenIndex === 18;
     };
 
-    var debugScreen19 = function(msg, data) {
-      if (isScreen19()) {
-        console.log('[SCREEN19-DEBUG][ButtonAnim] ' + msg, JSON.stringify(data || {}));
+    var debugBuggyScreenAnim = function(source, msg, data) {
+      if (isBuggyScreenAnim()) {
+        console.log('[BUGGY-SCREEN][' + source + '] ' + msg, JSON.stringify(data || {}));
+        // Send to React Native via postMessage for visibility
+        try {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'rampkit:debug-buggy-screen',
+              source: source,
+              message: msg,
+              data: data
+            }));
+          }
+        } catch(e) {}
       }
     };
     // ========== END DEBUG ==========
@@ -530,7 +544,7 @@ exports.injectedButtonAnimations = `
 
         // Match standard interactive elements
         if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select') {
-          debugScreen19('MATCHED: standard tag', { reason: 'tag=' + tag, element: debugInfo, trail: debugTrail });
+          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: standard tag', { reason: 'tag=' + tag, element: debugInfo, trail: debugTrail });
           return current;
         }
 
@@ -542,7 +556,7 @@ exports.injectedButtonAnimations = `
             if (attrName.indexOf('click') !== -1 || attrName.indexOf('tap') !== -1 ||
                 attrName.indexOf('action') !== -1 || attrName.indexOf('navigate') !== -1 ||
                 attrName.indexOf('press') !== -1) {
-              debugScreen19('MATCHED: data-attr', { reason: 'attr=' + attrName, value: attrs[j].value.substring(0,50), element: debugInfo, trail: debugTrail });
+              debugBuggyScreenAnim('ButtonAnim', 'MATCHED: data-attr', { reason: 'attr=' + attrName, value: attrs[j].value.substring(0,50), element: debugInfo, trail: debugTrail });
               return current;
             }
           }
@@ -550,20 +564,20 @@ exports.injectedButtonAnimations = `
 
         // Match elements with onclick
         if (current.onclick || current.hasAttribute('onclick')) {
-          debugScreen19('MATCHED: onclick', { element: debugInfo, trail: debugTrail });
+          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: onclick', { element: debugInfo, trail: debugTrail });
           return current;
         }
 
         // Match elements with role="button" or tabindex
         if (current.getAttribute('role') === 'button') {
-          debugScreen19('MATCHED: role=button', { element: debugInfo, trail: debugTrail });
+          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: role=button', { element: debugInfo, trail: debugTrail });
           return current;
         }
 
         // Match any element with an ID containing button/btn/cta
         var id = current.id || '';
         if (id && (id.toLowerCase().indexOf('button') !== -1 || id.toLowerCase().indexOf('btn') !== -1 || id.toLowerCase().indexOf('cta') !== -1)) {
-          debugScreen19('MATCHED: button-like ID', { reason: 'id=' + id, element: debugInfo, trail: debugTrail });
+          debugBuggyScreenAnim('ButtonAnim', 'MATCHED: button-like ID', { reason: 'id=' + id, element: debugInfo, trail: debugTrail });
           return current;
         }
 
@@ -573,7 +587,7 @@ exports.injectedButtonAnimations = `
           var cls = className.toLowerCase();
           if (cls.indexOf('btn') !== -1 || cls.indexOf('button') !== -1 || cls.indexOf('cta') !== -1 ||
               cls.indexOf('clickable') !== -1 || cls.indexOf('tappable') !== -1 || cls.indexOf('pressable') !== -1) {
-            debugScreen19('MATCHED: button-like class', { reason: 'class=' + className, element: debugInfo, trail: debugTrail });
+            debugBuggyScreenAnim('ButtonAnim', 'MATCHED: button-like class', { reason: 'class=' + className, element: debugInfo, trail: debugTrail });
             return current;
           }
         }
@@ -582,14 +596,14 @@ exports.injectedButtonAnimations = `
         try {
           var computed = window.getComputedStyle(current);
           if (computed && computed.cursor === 'pointer') {
-            debugScreen19('MATCHED: cursor:pointer', { element: debugInfo, trail: debugTrail });
+            debugBuggyScreenAnim('ButtonAnim', 'MATCHED: cursor:pointer', { element: debugInfo, trail: debugTrail });
             return current;
           }
         } catch(e) {}
 
         current = current.parentElement;
       }
-      debugScreen19('NO MATCH found', { originalTag: el.tagName, trail: debugTrail });
+      debugBuggyScreenAnim('ButtonAnim', 'NO MATCH found', { originalTag: el.tagName, trail: debugTrail });
       return null;
     }
     
@@ -622,40 +636,40 @@ exports.injectedButtonAnimations = `
     
     function onTouchStart(e) {
       try {
-        // ========== DEBUG: Screen 19 touch logging ==========
-        if (isScreen19()) {
+        // ========== DEBUG: phone-21 touch logging ==========
+        if (isBuggyScreenAnim()) {
           var touchX = e.touches ? e.touches[0].clientX : e.clientX;
           var touchY = e.touches ? e.touches[0].clientY : e.clientY;
           var originalTarget = e.target;
           var originalRect = originalTarget.getBoundingClientRect ? originalTarget.getBoundingClientRect() : {};
-          console.log('[SCREEN19-DEBUG][TouchStart] Touch at (' + touchX + ',' + touchY + ')', JSON.stringify({
+          debugBuggyScreenAnim('TouchStart', 'Touch at (' + touchX + ',' + touchY + ')', {
             originalTarget: {
               tag: originalTarget.tagName,
               id: originalTarget.id || '(none)',
               class: (originalTarget.className && typeof originalTarget.className === 'string') ? originalTarget.className.substring(0,100) : '(none)',
               size: originalRect.width + 'x' + originalRect.height
             }
-          }));
+          });
         }
         // ========== END DEBUG ==========
 
         var target = findInteractive(e.target);
         if (!target) return;
 
-        // ========== DEBUG: Screen 19 - log what element was found interactive ==========
-        if (isScreen19() && target) {
+        // ========== DEBUG: phone-21 - log what element was found interactive ==========
+        if (isBuggyScreenAnim() && target) {
           var targetRect = target.getBoundingClientRect();
           var screenWidth = window.innerWidth;
           var screenHeight = window.innerHeight;
           var isFullScreen = (targetRect.width >= screenWidth * 0.9 && targetRect.height >= screenHeight * 0.9);
-          console.log('[SCREEN19-DEBUG][TouchStart] INTERACTIVE ELEMENT FOUND', JSON.stringify({
+          debugBuggyScreenAnim('TouchStart', 'INTERACTIVE ELEMENT FOUND', {
             tag: target.tagName,
             id: target.id || '(none)',
             class: (target.className && typeof target.className === 'string') ? target.className.substring(0,100) : '(none)',
             size: targetRect.width + 'x' + targetRect.height,
             isFullScreen: isFullScreen,
             WARNING: isFullScreen ? 'FULL SCREEN ELEMENT DETECTED - THIS IS THE BUG!' : 'normal element'
-          }));
+          });
         }
         // ========== END DEBUG ==========
 
@@ -2006,19 +2020,25 @@ function Overlay(props) {
                                 var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
                                 const raw = ev.nativeEvent.data;
                                 console.log("raw", raw);
-                                // ========== DEBUG: Screen 19 onMessage logging (REMOVE AFTER BUG FIX) ==========
+                                // ========== DEBUG: phone-21 onMessage logging (REMOVE AFTER BUG FIX) ==========
                                 const screenId = ((_a = props.screens[i]) === null || _a === void 0 ? void 0 : _a.id) || "";
-                                const isScreen19OnMsg = screenId.indexOf('19') !== -1 ||
-                                    screenId.toLowerCase().indexOf('screen 19') !== -1 ||
-                                    screenId.toLowerCase().indexOf('screen19') !== -1 ||
-                                    i === 19 || i === 18;
-                                if (isScreen19OnMsg) {
-                                    console.log(`[SCREEN19-DEBUG][onMessage] Received message from screen ${i} (ID: ${screenId})`, JSON.stringify({
+                                const isBuggyScreenOnMsg = screenId === 'phone-21' || i === 18;
+                                if (isBuggyScreenOnMsg) {
+                                    console.log(`[BUGGY-SCREEN][onMessage] Received message from screen ${i} (ID: ${screenId})`, JSON.stringify({
                                         rawPreview: raw.substring(0, 200),
                                         isActiveScreen: i === activeScreenIndexRef.current,
                                         activeScreenIndex: activeScreenIndexRef.current
                                     }));
                                 }
+                                // Also handle debug messages from WebView
+                                try {
+                                    const debugData = JSON.parse(raw);
+                                    if ((debugData === null || debugData === void 0 ? void 0 : debugData.type) === 'rampkit:debug-buggy-screen') {
+                                        console.log(`[BUGGY-SCREEN][${debugData.source}] ${debugData.message}`, JSON.stringify(debugData.data || {}));
+                                        return; // Don't process further, it's just a debug message
+                                    }
+                                }
+                                catch (_) { }
                                 // ========== END DEBUG ==========
                                 // Accept either raw strings or JSON payloads from your editor
                                 try {
@@ -2182,9 +2202,9 @@ function Overlay(props) {
                                                 console.log(`[RampKit] Ignoring continue from inactive screen ${i}`);
                                             return;
                                         }
-                                        // ========== DEBUG: Screen 19 continue logging ==========
-                                        if (isScreen19OnMsg) {
-                                            console.log(`[SCREEN19-DEBUG][onMessage] CONTINUE action triggered from screen ${i}`, JSON.stringify({
+                                        // ========== DEBUG: phone-21 continue logging ==========
+                                        if (isBuggyScreenOnMsg) {
+                                            console.log(`[BUGGY-SCREEN][onMessage] CONTINUE action triggered from screen ${i}`, JSON.stringify({
                                                 animation: (data === null || data === void 0 ? void 0 : data.animation) || "fade",
                                                 screenId: screenId
                                             }));
@@ -2201,9 +2221,9 @@ function Overlay(props) {
                                             return;
                                         }
                                         const target = data === null || data === void 0 ? void 0 : data.targetScreenId;
-                                        // ========== DEBUG: Screen 19 navigate logging ==========
-                                        if (isScreen19OnMsg) {
-                                            console.log(`[SCREEN19-DEBUG][onMessage] NAVIGATE action triggered from screen ${i}`, JSON.stringify({
+                                        // ========== DEBUG: phone-21 navigate logging ==========
+                                        if (isBuggyScreenOnMsg) {
+                                            console.log(`[BUGGY-SCREEN][onMessage] NAVIGATE action triggered from screen ${i}`, JSON.stringify({
                                                 target: target,
                                                 animation: (data === null || data === void 0 ? void 0 : data.animation) || "fade",
                                                 screenId: screenId
