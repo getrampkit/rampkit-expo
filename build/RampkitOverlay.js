@@ -2032,7 +2032,13 @@ function Overlay(props) {
                                     // 3) A page requested an in-app review prompt
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:request-review" ||
                                         (data === null || data === void 0 ? void 0 : data.type) === "rampkit:review") {
-                                        const executeReview = async () => {
+                                        // Only process from active screen (on-open actions are handled by SDK in activateScreen)
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[Rampkit] Ignoring review request from inactive screen ${i} (SDK handles on-open)`);
+                                            return;
+                                        }
+                                        (async () => {
                                             try {
                                                 const available = await RampKitNative_1.StoreReview.isAvailableAsync();
                                                 if (available) {
@@ -2040,36 +2046,22 @@ function Overlay(props) {
                                                 }
                                             }
                                             catch (_) { }
-                                        };
-                                        // Only execute if screen is active, otherwise queue for later
-                                        if (isScreenActive(i)) {
-                                            executeReview();
-                                        }
-                                        else {
-                                            if (__DEV__)
-                                                console.log(`[Rampkit] Queuing review request from inactive screen ${i}`);
-                                            queueAction(i, executeReview);
-                                        }
+                                        })();
                                         return;
                                     }
                                     // 4) A page requested notification permission
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:request-notification-permission") {
-                                        const executeNotification = () => {
-                                            handleNotificationPermissionRequest({
-                                                ios: data === null || data === void 0 ? void 0 : data.ios,
-                                                android: data === null || data === void 0 ? void 0 : data.android,
-                                                behavior: data === null || data === void 0 ? void 0 : data.behavior,
-                                            });
-                                        };
-                                        // Only execute if screen is active, otherwise queue for later
-                                        if (isScreenActive(i)) {
-                                            executeNotification();
-                                        }
-                                        else {
+                                        // Only process from active screen (on-open actions are handled by SDK in activateScreen)
+                                        if (!isScreenActive(i)) {
                                             if (__DEV__)
-                                                console.log(`[Rampkit] Queuing notification request from inactive screen ${i}`);
-                                            queueAction(i, executeNotification);
+                                                console.log(`[Rampkit] Ignoring notification request from inactive screen ${i} (SDK handles on-open)`);
+                                            return;
                                         }
+                                        handleNotificationPermissionRequest({
+                                            ios: data === null || data === void 0 ? void 0 : data.ios,
+                                            android: data === null || data === void 0 ? void 0 : data.android,
+                                            behavior: data === null || data === void 0 ? void 0 : data.behavior,
+                                        });
                                         return;
                                     }
                                     // 5) Onboarding finished event from page
@@ -2180,7 +2172,13 @@ function Overlay(props) {
                                         return;
                                     }
                                     if (raw === "rampkit:request-review" || raw === "rampkit:review") {
-                                        const executeReview = async () => {
+                                        // Only process from active screen (on-open actions are handled by SDK in activateScreen)
+                                        if (!isScreenActive(i)) {
+                                            if (__DEV__)
+                                                console.log(`[Rampkit] Ignoring review request (raw) from inactive screen ${i} (SDK handles on-open)`);
+                                            return;
+                                        }
+                                        (async () => {
                                             try {
                                                 const available = await RampKitNative_1.StoreReview.isAvailableAsync();
                                                 if (available) {
@@ -2188,29 +2186,17 @@ function Overlay(props) {
                                                 }
                                             }
                                             catch (_) { }
-                                        };
-                                        // Only execute if screen is active, otherwise queue for later
-                                        if (isScreenActive(i)) {
-                                            executeReview();
-                                        }
-                                        else {
-                                            if (__DEV__)
-                                                console.log(`[Rampkit] Queuing review request (raw) from inactive screen ${i}`);
-                                            queueAction(i, executeReview);
-                                        }
+                                        })();
                                         return;
                                     }
                                     if (raw === "rampkit:request-notification-permission") {
-                                        const executeNotification = () => handleNotificationPermissionRequest(undefined);
-                                        // Only execute if screen is active, otherwise queue for later
-                                        if (isScreenActive(i)) {
-                                            executeNotification();
-                                        }
-                                        else {
+                                        // Only process from active screen (on-open actions are handled by SDK in activateScreen)
+                                        if (!isScreenActive(i)) {
                                             if (__DEV__)
-                                                console.log(`[Rampkit] Queuing notification request (raw) from inactive screen ${i}`);
-                                            queueAction(i, executeNotification);
+                                                console.log(`[Rampkit] Ignoring notification request (raw) from inactive screen ${i} (SDK handles on-open)`);
+                                            return;
                                         }
+                                        handleNotificationPermissionRequest(undefined);
                                         return;
                                     }
                                     if (raw === "rampkit:onboarding-finished") {

@@ -2311,12 +2311,14 @@ function Overlay(props: {
                       if (__DEV__) console.log(`[Rampkit] Ignoring review request from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
-                    try {
-                      const available = await StoreReview.isAvailableAsync();
-                      if (available) {
-                        await StoreReview.requestReview();
-                      }
-                    } catch (_) {}
+                    (async () => {
+                      try {
+                        const available = await StoreReview.isAvailableAsync();
+                        if (available) {
+                          await StoreReview.requestReview();
+                        }
+                      } catch (_) {}
+                    })();
                     return;
                   }
                   // 4) A page requested notification permission
