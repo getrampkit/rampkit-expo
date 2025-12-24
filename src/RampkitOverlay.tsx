@@ -1266,6 +1266,124 @@ function Overlay(props: {
           detail: { screenIndex: ${screenIndex}, screenId: '${screenId}' }
         }));
       } catch(e) {}
+
+      // Process on-open actions (SDK-side handling)
+      // This ensures actions run when screen becomes VISIBLE, not when loaded
+      try {
+        if (window.__rampkitOnOpenActionsProcessed) return; // Only run once per screen visibility
+        window.__rampkitOnOpenActionsProcessed = true;
+
+        var elements = document.querySelectorAll('[data-on-open-actions]');
+        elements.forEach(function(el) {
+          try {
+            var actionsStr = el.getAttribute('data-on-open-actions');
+            if (!actionsStr) return;
+
+            // Decode HTML entities
+            actionsStr = actionsStr.replace(/&quot;/g, '"').replace(/&#34;/g, '"')
+                                   .replace(/&apos;/g, "'").replace(/&#39;/g, "'")
+                                   .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                                   .replace(/&amp;/g, '&');
+
+            var actions = JSON.parse(actionsStr);
+            if (!Array.isArray(actions)) return;
+
+            console.log('[RampKit] Processing on-open actions:', actions.length);
+
+            // Execute actions in sequence with delays
+            var executeActions = function(actionList, index) {
+              if (index >= actionList.length) return;
+              if (!window.__rampkitScreenVisible) return; // Stop if screen became inactive
+
+              var action = actionList[index];
+              var actionType = action.type || action.actionType;
+
+              console.log('[RampKit] Executing on-open action:', actionType);
+
+              if (actionType === 'wait') {
+                var waitMs = action.waitMs || action.duration || 1000;
+                setTimeout(function() {
+                  executeActions(actionList, index + 1);
+                }, waitMs);
+                return;
+              }
+
+              if (actionType === 'navigate' || actionType === 'continue') {
+                var target = action.targetScreenId || action.target || '__continue__';
+                var animation = action.animation || 'fade';
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'rampkit:navigate',
+                  targetScreenId: target,
+                  animation: animation,
+                  fromOnOpen: true
+                }));
+                // Don't continue to next action after navigate
+                return;
+              }
+
+              if (actionType === 'goBack') {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'rampkit:goBack',
+                  animation: action.animation || 'fade',
+                  fromOnOpen: true
+                }));
+                return;
+              }
+
+              if (actionType === 'requestReview' || actionType === 'request-review') {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'rampkit:request-review',
+                  fromOnOpen: true
+                }));
+                executeActions(actionList, index + 1);
+                return;
+              }
+
+              if (actionType === 'requestNotificationPermission' || actionType === 'request-notification-permission') {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'rampkit:request-notification-permission',
+                  ios: action.ios,
+                  android: action.android,
+                  behavior: action.behavior,
+                  fromOnOpen: true
+                }));
+                executeActions(actionList, index + 1);
+                return;
+              }
+
+              if (actionType === 'haptic') {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'rampkit:haptic',
+                  hapticType: action.hapticType || 'impact',
+                  impactStyle: action.impactStyle || 'Medium',
+                  fromOnOpen: true
+                }));
+                executeActions(actionList, index + 1);
+                return;
+              }
+
+              if (actionType === 'close') {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'rampkit:close',
+                  fromOnOpen: true
+                }));
+                return;
+              }
+
+              // Unknown action, continue to next
+              executeActions(actionList, index + 1);
+            };
+
+            // Start executing actions
+            executeActions(actions, 0);
+
+          } catch(e) {
+            console.log('[RampKit] Error processing on-open actions:', e);
+          }
+        });
+      } catch(e) {
+        console.log('[RampKit] Error finding on-open actions:', e);
+      }
     })();`;
 
     // @ts-ignore: injectJavaScript exists on WebView instance
@@ -1286,6 +1404,7 @@ function Overlay(props: {
 
     const deactivateScript = `(function() {
       window.__rampkitScreenVisible = false;
+      window.__rampkitOnOpenActionsProcessed = false; // Reset so on-open can run again if user returns
       console.log('🔒 Screen ${screenIndex} DEACTIVATED');
 
       // Pause all Lottie animations
@@ -2259,54 +2378,46 @@ function Overlay(props: {
                     data?.type === "rampkit:continue" ||
                     data?.type === "continue"
                   ) {
-                    const executeContinue = () => handleAdvance(i, data?.animation || "fade");
-                    // Queue if screen is not active (e.g., on-open actions during preload)
+                    // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Queuing continue from inactive screen ${i}`);
-                      queueAction(i, executeContinue);
+                      if (__DEV__) console.log(`[Rampkit] Ignoring continue from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
-                    executeContinue();
+                    handleAdvance(i, data?.animation || "fade");
                     return;
                   }
                   if (data?.type === "rampkit:navigate") {
-                    const target = data?.targetScreenId;
-                    const executeNavigate = () => {
-                      if (target === "__goBack__") {
-                        handleGoBack(i, data?.animation || "fade");
-                        return;
-                      }
-                      if (!target || target === "__continue__") {
-                        handleAdvance(i, data?.animation || "fade");
-                        return;
-                      }
-                      const targetIndex = props.screens.findIndex(
-                        (s) => s.id === target
-                      );
-                      if (targetIndex >= 0) {
-                        navigateToIndex(targetIndex, data?.animation || "fade");
-                      } else {
-                        handleAdvance(i);
-                      }
-                    };
-                    // Queue if screen is not active (e.g., on-open actions during preload)
+                    // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Queuing navigate from inactive screen ${i}`);
-                      queueAction(i, executeNavigate);
+                      if (__DEV__) console.log(`[Rampkit] Ignoring navigate from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
-                    executeNavigate();
+                    const target = data?.targetScreenId;
+                    if (target === "__goBack__") {
+                      handleGoBack(i, data?.animation || "fade");
+                      return;
+                    }
+                    if (!target || target === "__continue__") {
+                      handleAdvance(i, data?.animation || "fade");
+                      return;
+                    }
+                    const targetIndex = props.screens.findIndex(
+                      (s) => s.id === target
+                    );
+                    if (targetIndex >= 0) {
+                      navigateToIndex(targetIndex, data?.animation || "fade");
+                    } else {
+                      handleAdvance(i);
+                    }
                     return;
                   }
                   if (data?.type === "rampkit:goBack") {
-                    const executeGoBack = () => handleGoBack(i, data?.animation || "fade");
-                    // Queue if screen is not active (e.g., on-open actions during preload)
+                    // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Queuing goBack from inactive screen ${i}`);
-                      queueAction(i, executeGoBack);
+                      if (__DEV__) console.log(`[Rampkit] Ignoring goBack from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
-                    executeGoBack();
+                    handleGoBack(i, data?.animation || "fade");
                     return;
                   }
                   if (data?.type === "rampkit:close") {
@@ -2328,14 +2439,12 @@ function Overlay(props: {
                     raw === "next" ||
                     raw === "continue"
                   ) {
-                    const executeAdvance = () => handleAdvance(i);
-                    // Queue if screen is not active (e.g., on-open actions during preload)
+                    // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Queuing ${raw} from inactive screen ${i}`);
-                      queueAction(i, executeAdvance);
+                      if (__DEV__) console.log(`[Rampkit] Ignoring ${raw} from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
-                    executeAdvance();
+                    handleAdvance(i);
                     return;
                   }
                   if (raw === "rampkit:request-review" || raw === "rampkit:review") {
@@ -2384,43 +2493,37 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:goBack") {
-                    const executeGoBack = () => handleGoBack(i);
-                    // Queue if screen is not active (e.g., on-open actions during preload)
+                    // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Queuing goBack (raw) from inactive screen ${i}`);
-                      queueAction(i, executeGoBack);
+                      if (__DEV__) console.log(`[Rampkit] Ignoring goBack (raw) from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
-                    executeGoBack();
+                    handleGoBack(i);
                     return;
                   }
                   if (raw.startsWith("rampkit:navigate:")) {
-                    const target = raw.slice("rampkit:navigate:".length);
-                    const executeNavigate = () => {
-                      if (target === "__goBack__") {
-                        handleGoBack(i);
-                        return;
-                      }
-                      if (!target || target === "__continue__") {
-                        handleAdvance(i);
-                        return;
-                      }
-                      const targetIndex = props.screens.findIndex(
-                        (s) => s.id === target
-                      );
-                      if (targetIndex >= 0) {
-                        navigateToIndex(targetIndex);
-                      } else {
-                        handleAdvance(i);
-                      }
-                    };
-                    // Queue if screen is not active (e.g., on-open actions during preload)
+                    // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Queuing navigate (raw) from inactive screen ${i}`);
-                      queueAction(i, executeNavigate);
+                      if (__DEV__) console.log(`[Rampkit] Ignoring navigate (raw) from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
-                    executeNavigate();
+                    const target = raw.slice("rampkit:navigate:".length);
+                    if (target === "__goBack__") {
+                      handleGoBack(i);
+                      return;
+                    }
+                    if (!target || target === "__continue__") {
+                      handleAdvance(i);
+                      return;
+                    }
+                    const targetIndex = props.screens.findIndex(
+                      (s) => s.id === target
+                    );
+                    if (targetIndex >= 0) {
+                      navigateToIndex(targetIndex);
+                    } else {
+                      handleAdvance(i);
+                    }
                     return;
                   }
                   if (raw === "rampkit:close") {
