@@ -142,7 +142,25 @@ export const injectedDynamicTapHandler = `
 (function() {
     if (window.__rampkitClickInterceptorInstalled) return;
     window.__rampkitClickInterceptorInstalled = true;
-    
+
+    // ========== DEBUG: Screen 19 specific logging (REMOVE AFTER BUG FIX) ==========
+    var isScreen19Dynamic = function() {
+      var screenId = window.__rampkitScreenId || '';
+      var screenIndex = window.__rampkitScreenIndex;
+      return screenId.indexOf('19') !== -1 ||
+             screenId.toLowerCase().indexOf('screen 19') !== -1 ||
+             screenId.toLowerCase().indexOf('screen19') !== -1 ||
+             screenIndex === 19 ||
+             screenIndex === 18;
+    };
+
+    var debugScreen19Dynamic = function(msg, data) {
+      if (isScreen19Dynamic()) {
+        console.log('[SCREEN19-DEBUG][DynamicTap] ' + msg, JSON.stringify(data || {}));
+      }
+    };
+    // ========== END DEBUG ==========
+
     // Decode HTML entities
     function decodeHtml(str) {
         if (!str) return str;
@@ -150,27 +168,55 @@ export const injectedDynamicTapHandler = `
                   .replace(/&apos;/g, "'").replace(/&#39;/g, "'").replace(/&#x27;/g, "'")
                   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
     }
-    
+
     // Find dynamic tap config on element or ancestors
     function findDynamicTap(el) {
         var current = el;
         var depth = 0;
         var attrNames = ['data-tap-dynamic', 'data-tapdynamic', 'tapDynamic', 'data-dynamic-tap'];
+        var searchTrail = []; // DEBUG: Track search path
+
         while (current && current !== document.body && current !== document.documentElement && depth < 20) {
+            // DEBUG: Build search trail for Screen 19
+            var trailInfo = {
+              depth: depth,
+              tag: current.tagName,
+              id: current.id || '(none)',
+              class: (current.className && typeof current.className === 'string') ? current.className.substring(0,50) : '(none)'
+            };
+            searchTrail.push(trailInfo);
+
             if (current.getAttribute) {
                 for (var i = 0; i < attrNames.length; i++) {
                     var attr = current.getAttribute(attrNames[i]);
                     if (attr && attr.length > 2) {
+                        var rect = current.getBoundingClientRect ? current.getBoundingClientRect() : {};
+                        debugScreen19Dynamic('FOUND data-tap-dynamic', {
+                          attrName: attrNames[i],
+                          depth: depth,
+                          element: trailInfo,
+                          size: rect.width + 'x' + rect.height,
+                          configPreview: attr.substring(0, 100) + '...',
+                          trail: searchTrail
+                        });
                         return { element: current, config: attr };
                     }
                 }
                 if (current.dataset && current.dataset.tapDynamic) {
+                    var rect2 = current.getBoundingClientRect ? current.getBoundingClientRect() : {};
+                    debugScreen19Dynamic('FOUND dataset.tapDynamic', {
+                      depth: depth,
+                      element: trailInfo,
+                      size: rect2.width + 'x' + rect2.height,
+                      trail: searchTrail
+                    });
                     return { element: current, config: current.dataset.tapDynamic };
                 }
             }
             current = current.parentElement;
             depth++;
         }
+        debugScreen19Dynamic('NO data-tap-dynamic found', { trail: searchTrail });
         return null;
     }
     
@@ -310,23 +356,78 @@ export const injectedDynamicTapHandler = `
     
     // Click interceptor - capture phase, runs BEFORE onclick handlers
     function interceptClick(event) {
+        // ========== DEBUG: Screen 19 click logging ==========
+        if (isScreen19Dynamic()) {
+          var clickX = event.clientX;
+          var clickY = event.clientY;
+          var originalTarget = event.target;
+          var originalRect = originalTarget.getBoundingClientRect ? originalTarget.getBoundingClientRect() : {};
+          console.log('[SCREEN19-DEBUG][Click] Click at (' + clickX + ',' + clickY + ')', JSON.stringify({
+            originalTarget: {
+              tag: originalTarget.tagName,
+              id: originalTarget.id || '(none)',
+              class: (originalTarget.className && typeof originalTarget.className === 'string') ? originalTarget.className.substring(0,100) : '(none)',
+              size: originalRect.width + 'x' + originalRect.height
+            }
+          }));
+        }
+        // ========== END DEBUG ==========
+
         var result = findDynamicTap(event.target);
         if (!result) return;
-        
+
+        // ========== DEBUG: Screen 19 - log when dynamic tap is found ==========
+        if (isScreen19Dynamic()) {
+          var rect = result.element.getBoundingClientRect ? result.element.getBoundingClientRect() : {};
+          var screenWidth = window.innerWidth;
+          var screenHeight = window.innerHeight;
+          var isFullScreen = (rect.width >= screenWidth * 0.9 && rect.height >= screenHeight * 0.9);
+          console.log('[SCREEN19-DEBUG][Click] DYNAMIC TAP WILL BE HANDLED', JSON.stringify({
+            element: {
+              tag: result.element.tagName,
+              id: result.element.id || '(none)',
+              class: (result.element.className && typeof result.element.className === 'string') ? result.element.className.substring(0,100) : '(none)',
+              size: rect.width + 'x' + rect.height
+            },
+            isFullScreen: isFullScreen,
+            WARNING: isFullScreen ? 'FULL SCREEN ELEMENT WITH DYNAMIC TAP - THIS IS THE BUG!' : 'normal element'
+          }));
+        }
+        // ========== END DEBUG ==========
+
         try {
             var configStr = decodeHtml(result.config);
             var config = JSON.parse(configStr);
+
+            // ========== DEBUG: Screen 19 - log parsed config ==========
+            if (isScreen19Dynamic()) {
+              console.log('[SCREEN19-DEBUG][Click] Parsed config:', JSON.stringify({
+                hasValues: !!(config && config.values),
+                valuesCount: config && config.values ? config.values.length : 0,
+                firstCondition: config && config.values && config.values[0] ? {
+                  conditionType: config.values[0].conditionType,
+                  rulesCount: config.values[0].rules ? config.values[0].rules.length : 0,
+                  actionsCount: config.values[0].actions ? config.values[0].actions.length : 0
+                } : null
+              }));
+            }
+            // ========== END DEBUG ==========
+
             var handled = evalDynamicTap(config);
             if (handled) {
+                debugScreen19Dynamic('Click HANDLED by dynamic tap - event stopped', { handled: true });
                 event.stopImmediatePropagation();
                 event.preventDefault();
                 return false;
             }
         } catch (e) {
             console.log('[RampKit] Dynamic tap error:', e);
+            if (isScreen19Dynamic()) {
+              console.log('[SCREEN19-DEBUG][Click] Dynamic tap parse error:', e.message);
+            }
         }
     }
-    
+
     // Install interceptor on window in capture phase
     window.addEventListener('click', interceptClick, true);
 })();
@@ -340,68 +441,117 @@ export const injectedButtonAnimations = `
   try {
     if (window.__rkButtonAnimApplied) return true;
     window.__rkButtonAnimApplied = true;
-    
+
     var pressed = null;
     var pressedOriginalTransform = '';
     var pressedOriginalOpacity = '';
     var pressedOriginalTransition = '';
     var releaseTimer = null;
-    
+
+    // ========== DEBUG: Screen 19 specific logging (REMOVE AFTER BUG FIX) ==========
+    var isScreen19 = function() {
+      // Check multiple ways to identify Screen 19
+      var screenId = window.__rampkitScreenId || '';
+      var screenIndex = window.__rampkitScreenIndex;
+      return screenId.indexOf('19') !== -1 ||
+             screenId.toLowerCase().indexOf('screen 19') !== -1 ||
+             screenId.toLowerCase().indexOf('screen19') !== -1 ||
+             screenIndex === 19 ||
+             screenIndex === 18; // 0-indexed, so screen 19 would be index 18
+    };
+
+    var debugScreen19 = function(msg, data) {
+      if (isScreen19()) {
+        console.log('[SCREEN19-DEBUG][ButtonAnim] ' + msg, JSON.stringify(data || {}));
+      }
+    };
+    // ========== END DEBUG ==========
+
     // Find interactive element - very permissive, looks for any clickable-looking element
     function findInteractive(el) {
       var current = el;
+      var debugTrail = []; // DEBUG: Track search path for Screen 19
+
       for (var i = 0; i < 20 && current && current !== document.body && current !== document.documentElement; i++) {
         if (!current || !current.tagName) { current = current.parentElement; continue; }
         var tag = current.tagName.toLowerCase();
-        
+
         // Skip tiny elements (likely icons inside buttons)
         var rect = current.getBoundingClientRect();
         if (rect.width < 20 || rect.height < 20) { current = current.parentElement; continue; }
-        
+
+        // DEBUG: Build trail for Screen 19
+        var debugInfo = {
+          depth: i,
+          tag: tag,
+          id: current.id || '(none)',
+          class: (current.className && typeof current.className === 'string') ? current.className.substring(0, 100) : '(none)',
+          size: rect.width + 'x' + rect.height
+        };
+        debugTrail.push(debugInfo);
+
         // Match standard interactive elements
-        if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select') return current;
-        
+        if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select') {
+          debugScreen19('MATCHED: standard tag', { reason: 'tag=' + tag, element: debugInfo, trail: debugTrail });
+          return current;
+        }
+
         // Match elements with any data attribute containing action/navigate/tap/click
         var attrs = current.attributes;
         if (attrs) {
           for (var j = 0; j < attrs.length; j++) {
             var attrName = attrs[j].name.toLowerCase();
-            if (attrName.indexOf('click') !== -1 || attrName.indexOf('tap') !== -1 || 
+            if (attrName.indexOf('click') !== -1 || attrName.indexOf('tap') !== -1 ||
                 attrName.indexOf('action') !== -1 || attrName.indexOf('navigate') !== -1 ||
                 attrName.indexOf('press') !== -1) {
+              debugScreen19('MATCHED: data-attr', { reason: 'attr=' + attrName, value: attrs[j].value.substring(0,50), element: debugInfo, trail: debugTrail });
               return current;
             }
           }
         }
-        
+
         // Match elements with onclick
-        if (current.onclick || current.hasAttribute('onclick')) return current;
-        
+        if (current.onclick || current.hasAttribute('onclick')) {
+          debugScreen19('MATCHED: onclick', { element: debugInfo, trail: debugTrail });
+          return current;
+        }
+
         // Match elements with role="button" or tabindex
-        if (current.getAttribute('role') === 'button') return current;
-        
+        if (current.getAttribute('role') === 'button') {
+          debugScreen19('MATCHED: role=button', { element: debugInfo, trail: debugTrail });
+          return current;
+        }
+
         // Match any element with an ID containing button/btn/cta
         var id = current.id || '';
-        if (id && (id.toLowerCase().indexOf('button') !== -1 || id.toLowerCase().indexOf('btn') !== -1 || id.toLowerCase().indexOf('cta') !== -1)) return current;
-        
+        if (id && (id.toLowerCase().indexOf('button') !== -1 || id.toLowerCase().indexOf('btn') !== -1 || id.toLowerCase().indexOf('cta') !== -1)) {
+          debugScreen19('MATCHED: button-like ID', { reason: 'id=' + id, element: debugInfo, trail: debugTrail });
+          return current;
+        }
+
         // Match elements with button-like classes
         var className = current.className;
         if (className && typeof className === 'string') {
           var cls = className.toLowerCase();
-          if (cls.indexOf('btn') !== -1 || cls.indexOf('button') !== -1 || cls.indexOf('cta') !== -1 || 
+          if (cls.indexOf('btn') !== -1 || cls.indexOf('button') !== -1 || cls.indexOf('cta') !== -1 ||
               cls.indexOf('clickable') !== -1 || cls.indexOf('tappable') !== -1 || cls.indexOf('pressable') !== -1) {
+            debugScreen19('MATCHED: button-like class', { reason: 'class=' + className, element: debugInfo, trail: debugTrail });
             return current;
           }
         }
-        
+
         // Match elements with cursor pointer
         try {
           var computed = window.getComputedStyle(current);
-          if (computed && computed.cursor === 'pointer') return current;
+          if (computed && computed.cursor === 'pointer') {
+            debugScreen19('MATCHED: cursor:pointer', { element: debugInfo, trail: debugTrail });
+            return current;
+          }
         } catch(e) {}
-        
+
         current = current.parentElement;
       }
+      debugScreen19('NO MATCH found', { originalTag: el.tagName, trail: debugTrail });
       return null;
     }
     
@@ -434,8 +584,43 @@ export const injectedButtonAnimations = `
     
     function onTouchStart(e) {
       try {
+        // ========== DEBUG: Screen 19 touch logging ==========
+        if (isScreen19()) {
+          var touchX = e.touches ? e.touches[0].clientX : e.clientX;
+          var touchY = e.touches ? e.touches[0].clientY : e.clientY;
+          var originalTarget = e.target;
+          var originalRect = originalTarget.getBoundingClientRect ? originalTarget.getBoundingClientRect() : {};
+          console.log('[SCREEN19-DEBUG][TouchStart] Touch at (' + touchX + ',' + touchY + ')', JSON.stringify({
+            originalTarget: {
+              tag: originalTarget.tagName,
+              id: originalTarget.id || '(none)',
+              class: (originalTarget.className && typeof originalTarget.className === 'string') ? originalTarget.className.substring(0,100) : '(none)',
+              size: originalRect.width + 'x' + originalRect.height
+            }
+          }));
+        }
+        // ========== END DEBUG ==========
+
         var target = findInteractive(e.target);
         if (!target) return;
+
+        // ========== DEBUG: Screen 19 - log what element was found interactive ==========
+        if (isScreen19() && target) {
+          var targetRect = target.getBoundingClientRect();
+          var screenWidth = window.innerWidth;
+          var screenHeight = window.innerHeight;
+          var isFullScreen = (targetRect.width >= screenWidth * 0.9 && targetRect.height >= screenHeight * 0.9);
+          console.log('[SCREEN19-DEBUG][TouchStart] INTERACTIVE ELEMENT FOUND', JSON.stringify({
+            tag: target.tagName,
+            id: target.id || '(none)',
+            class: (target.className && typeof target.className === 'string') ? target.className.substring(0,100) : '(none)',
+            size: targetRect.width + 'x' + targetRect.height,
+            isFullScreen: isFullScreen,
+            WARNING: isFullScreen ? 'FULL SCREEN ELEMENT DETECTED - THIS IS THE BUG!' : 'normal element'
+          }));
+        }
+        // ========== END DEBUG ==========
+
         if (releaseTimer) { clearTimeout(releaseTimer); releaseTimer = null; }
         if (pressed && pressed !== target) { resetStyle(pressed); }
         applyPressedStyle(target);
@@ -1992,7 +2177,8 @@ function Overlay(props: {
                 // This prevents review/notification requests from firing on inactive screens at startup.
                 `window.__rampkitScreenVisible = ${i === 0};
                  window.__rampkitScreenIndex = ${i};
-                 console.log('[RampKit] Screen ${i} visibility initialized: ' + (${i === 0} ? 'ACTIVE' : 'INACTIVE'));
+                 window.__rampkitScreenId = '${props.screens[i]?.id || ""}';
+                 console.log('[RampKit] Screen ${i} (ID: ${props.screens[i]?.id || "unknown"}) visibility initialized: ' + (${i === 0} ? 'ACTIVE' : 'INACTIVE'));
                 ` + injectedHardening + injectedDynamicTapHandler + injectedButtonAnimations
               }
               injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
@@ -2072,6 +2258,22 @@ function Overlay(props: {
               onMessage={(ev: any) => {
                 const raw = ev.nativeEvent.data;
                 console.log("raw", raw);
+
+                // ========== DEBUG: Screen 19 onMessage logging (REMOVE AFTER BUG FIX) ==========
+                const screenId = props.screens[i]?.id || "";
+                const isScreen19OnMsg = screenId.indexOf('19') !== -1 ||
+                                        screenId.toLowerCase().indexOf('screen 19') !== -1 ||
+                                        screenId.toLowerCase().indexOf('screen19') !== -1 ||
+                                        i === 19 || i === 18;
+                if (isScreen19OnMsg) {
+                  console.log(`[SCREEN19-DEBUG][onMessage] Received message from screen ${i} (ID: ${screenId})`, JSON.stringify({
+                    rawPreview: raw.substring(0, 200),
+                    isActiveScreen: i === activeScreenIndexRef.current,
+                    activeScreenIndex: activeScreenIndexRef.current
+                  }));
+                }
+                // ========== END DEBUG ==========
+
                 // Accept either raw strings or JSON payloads from your editor
                 try {
                   // JSON path
@@ -2252,6 +2454,14 @@ function Overlay(props: {
                       if (__DEV__) console.log(`[RampKit] Ignoring continue from inactive screen ${i}`);
                       return;
                     }
+                    // ========== DEBUG: Screen 19 continue logging ==========
+                    if (isScreen19OnMsg) {
+                      console.log(`[SCREEN19-DEBUG][onMessage] CONTINUE action triggered from screen ${i}`, JSON.stringify({
+                        animation: data?.animation || "fade",
+                        screenId: screenId
+                      }));
+                    }
+                    // ========== END DEBUG ==========
                     handleAdvance(i, data?.animation || "fade");
                     return;
                   }
@@ -2262,6 +2472,15 @@ function Overlay(props: {
                       return;
                     }
                     const target = data?.targetScreenId;
+                    // ========== DEBUG: Screen 19 navigate logging ==========
+                    if (isScreen19OnMsg) {
+                      console.log(`[SCREEN19-DEBUG][onMessage] NAVIGATE action triggered from screen ${i}`, JSON.stringify({
+                        target: target,
+                        animation: data?.animation || "fade",
+                        screenId: screenId
+                      }));
+                    }
+                    // ========== END DEBUG ==========
                     if (target === "__goBack__") {
                       handleGoBack(i, data?.animation || "fade");
                       return;
