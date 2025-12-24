@@ -2286,8 +2286,8 @@ function Overlay(props: {
                         console.log("[Rampkit] variables updated:", newVars);
                       }
 
-                      // Persist state updates to storage
-                      OnboardingResponseStorage.updateState(newVars);
+                      // Persist variable updates to storage
+                      OnboardingResponseStorage.updateVariables(newVars);
 
                       // CRITICAL: Send merged vars back to the active screen
                       // This ensures window.__rampkitVariables has the complete state

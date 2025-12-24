@@ -221,24 +221,17 @@ class RampKitCore {
         return this.initialized;
     }
     /**
-     * Get all stored onboarding state variables
-     * @returns Promise resolving to OnboardingState with variables and timestamp
+     * Get all user answers from onboarding
      */
-    async getOnboardingState() {
-        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveState();
+    async getAnswers() {
+        return OnboardingResponseStorage_1.OnboardingResponseStorage.getVariables();
     }
     /**
-     * Get just the onboarding variables (convenience method)
-     * @returns Promise resolving to Record of variable name to value
+     * Get a single answer by key
      */
-    async getOnboardingVariables() {
-        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveVariables();
-    }
-    /**
-     * @deprecated Use getOnboardingState() or getOnboardingVariables() instead
-     */
-    async getOnboardingResponses() {
-        return OnboardingResponseStorage_1.OnboardingResponseStorage.retrieveVariables();
+    async getAnswer(key) {
+        const answers = await OnboardingResponseStorage_1.OnboardingResponseStorage.getVariables();
+        return answers[key];
     }
     /**
      * Show the onboarding overlay
@@ -264,8 +257,8 @@ class RampKitCore {
                     return {};
                 }
             })();
-            // Initialize state storage with initial values
-            OnboardingResponseStorage_1.OnboardingResponseStorage.initializeState(variables);
+            // Initialize storage with initial values
+            OnboardingResponseStorage_1.OnboardingResponseStorage.initializeVariables(variables);
             const screens = data.screens.map((s) => ({
                 id: s.id,
                 html: s.html ||
@@ -391,8 +384,8 @@ class RampKitCore {
         this.onboardingData = null;
         this.initialized = false;
         this.appUserID = null;
-        // Clear stored onboarding responses
-        await OnboardingResponseStorage_1.OnboardingResponseStorage.clearResponses();
+        // Clear stored onboarding variables
+        await OnboardingResponseStorage_1.OnboardingResponseStorage.clearVariables();
         console.log("[RampKit] Reset: Re-initializing SDK...");
         // Re-initialize with stored config
         await this.configure(this.config);

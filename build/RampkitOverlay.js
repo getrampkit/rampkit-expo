@@ -2014,8 +2014,8 @@ function Overlay(props) {
                                             if (__DEV__) {
                                                 console.log("[Rampkit] variables updated:", newVars);
                                             }
-                                            // Persist state updates to storage
-                                            OnboardingResponseStorage_1.OnboardingResponseStorage.updateState(newVars);
+                                            // Persist variable updates to storage
+                                            OnboardingResponseStorage_1.OnboardingResponseStorage.updateVariables(newVars);
                                             // CRITICAL: Send merged vars back to the active screen
                                             // This ensures window.__rampkitVariables has the complete state
                                             // which is needed for dynamic tap conditions to evaluate correctly

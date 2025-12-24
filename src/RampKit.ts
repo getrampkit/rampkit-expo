@@ -18,7 +18,6 @@ import {
 import { eventManager } from "./EventManager";
 import { TransactionObserver } from "./RampKitNative";
 import { DeviceInfo, RampKitConfig, EventContext, RampKitContext, NavigationData } from "./types";
-import { OnboardingState } from "./OnboardingResponseStorage";
 import { ENDPOINTS, SUPABASE_ANON_KEY, MANIFEST_BASE_URL } from "./constants";
 import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
 
@@ -273,26 +272,18 @@ export class RampKitCore {
   }
 
   /**
-   * Get all stored onboarding state variables
-   * @returns Promise resolving to OnboardingState with variables and timestamp
+   * Get all user answers from onboarding
    */
-  async getOnboardingState(): Promise<OnboardingState> {
-    return OnboardingResponseStorage.retrieveState();
+  async getAnswers(): Promise<Record<string, any>> {
+    return OnboardingResponseStorage.getVariables();
   }
 
   /**
-   * Get just the onboarding variables (convenience method)
-   * @returns Promise resolving to Record of variable name to value
+   * Get a single answer by key
    */
-  async getOnboardingVariables(): Promise<Record<string, any>> {
-    return OnboardingResponseStorage.retrieveVariables();
-  }
-
-  /**
-   * @deprecated Use getOnboardingState() or getOnboardingVariables() instead
-   */
-  async getOnboardingResponses(): Promise<Record<string, any>> {
-    return OnboardingResponseStorage.retrieveVariables();
+  async getAnswer(key: string): Promise<any> {
+    const answers = await OnboardingResponseStorage.getVariables();
+    return answers[key];
   }
 
   /**
@@ -322,8 +313,8 @@ export class RampKitCore {
         }
       })();
 
-      // Initialize state storage with initial values
-      OnboardingResponseStorage.initializeState(variables);
+      // Initialize storage with initial values
+      OnboardingResponseStorage.initializeVariables(variables);
 
       const screens = data.screens.map((s: any) => ({
         id: s.id,
@@ -493,8 +484,8 @@ export class RampKitCore {
     this.initialized = false;
     this.appUserID = null;
 
-    // Clear stored onboarding responses
-    await OnboardingResponseStorage.clearResponses();
+    // Clear stored onboarding variables
+    await OnboardingResponseStorage.clearVariables();
 
     console.log("[RampKit] Reset: Re-initializing SDK...");
 

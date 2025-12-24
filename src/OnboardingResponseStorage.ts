@@ -1,119 +1,81 @@
 /**
  * OnboardingResponseStorage
- * Manages persistent storage of onboarding state variables
+ * Manages persistent storage of onboarding variables
  */
 
 import { getStoredValue, setStoredValue } from "./RampKitNative";
 import { STORAGE_KEYS } from "./constants";
 
 /**
- * Represents the stored onboarding state
- */
-export interface OnboardingState {
-  /** The state variables as key-value pairs */
-  variables: Record<string, any>;
-  /** ISO 8601 timestamp when the state was last updated */
-  updatedAt: string;
-}
-
-/**
- * Manages persistent storage of onboarding state variables
+ * Manages persistent storage of onboarding variables
  */
 export const OnboardingResponseStorage = {
   /**
-   * Initialize the state with initial values from onboarding config
-   * This should be called when onboarding starts
+   * Initialize with initial values from onboarding config
    */
-  async initializeState(initialVariables: Record<string, any>): Promise<void> {
+  async initializeVariables(initialVariables: Record<string, any>): Promise<void> {
     try {
-      const state: OnboardingState = {
-        variables: { ...initialVariables },
-        updatedAt: new Date().toISOString(),
-      };
-
       await setStoredValue(
         STORAGE_KEYS.ONBOARDING_RESPONSES,
-        JSON.stringify(state)
+        JSON.stringify(initialVariables)
       );
 
       if (__DEV__) {
-        console.log("[RampKit] Initialized onboarding state:", initialVariables);
+        console.log("[RampKit] Initialized onboarding variables:", initialVariables);
       }
     } catch (error) {
-      console.warn("[RampKit] Failed to initialize onboarding state:", error);
+      console.warn("[RampKit] Failed to initialize onboarding variables:", error);
     }
   },
 
   /**
-   * Update state with new variable values (merges with existing)
+   * Update variables (merges with existing)
    */
-  async updateState(newVariables: Record<string, any>): Promise<void> {
+  async updateVariables(newVariables: Record<string, any>): Promise<void> {
     try {
-      const currentState = await this.retrieveState();
-
-      const updatedState: OnboardingState = {
-        variables: {
-          ...currentState.variables,
-          ...newVariables,
-        },
-        updatedAt: new Date().toISOString(),
-      };
+      const current = await this.getVariables();
+      const merged = { ...current, ...newVariables };
 
       await setStoredValue(
         STORAGE_KEYS.ONBOARDING_RESPONSES,
-        JSON.stringify(updatedState)
+        JSON.stringify(merged)
       );
 
       if (__DEV__) {
-        console.log("[RampKit] Updated onboarding state:", newVariables);
+        console.log("[RampKit] Updated onboarding variables:", newVariables);
       }
     } catch (error) {
-      console.warn("[RampKit] Failed to update onboarding state:", error);
+      console.warn("[RampKit] Failed to update onboarding variables:", error);
     }
   },
 
   /**
-   * Retrieve the stored state
-   * @returns OnboardingState object with variables and timestamp
+   * Get stored variables
    */
-  async retrieveState(): Promise<OnboardingState> {
+  async getVariables(): Promise<Record<string, any>> {
     try {
       const jsonString = await getStoredValue(STORAGE_KEYS.ONBOARDING_RESPONSES);
       if (!jsonString) {
-        return { variables: {}, updatedAt: "" };
+        return {};
       }
-      return JSON.parse(jsonString) as OnboardingState;
+      return JSON.parse(jsonString) as Record<string, any>;
     } catch (error) {
-      console.warn("[RampKit] Failed to retrieve onboarding state:", error);
-      return { variables: {}, updatedAt: "" };
+      console.warn("[RampKit] Failed to retrieve onboarding variables:", error);
+      return {};
     }
   },
 
   /**
-   * Retrieve just the variables (convenience method)
-   * @returns Record of variable name to value
+   * Clear all stored variables
    */
-  async retrieveVariables(): Promise<Record<string, any>> {
-    const state = await this.retrieveState();
-    return state.variables;
-  },
-
-  /**
-   * Clear all stored state
-   */
-  async clearState(): Promise<void> {
+  async clearVariables(): Promise<void> {
     try {
       await setStoredValue(STORAGE_KEYS.ONBOARDING_RESPONSES, "");
       if (__DEV__) {
-        console.log("[RampKit] Cleared onboarding state");
+        console.log("[RampKit] Cleared onboarding variables");
       }
     } catch (error) {
-      console.warn("[RampKit] Failed to clear onboarding state:", error);
+      console.warn("[RampKit] Failed to clear onboarding variables:", error);
     }
-  },
-
-  // Legacy aliases for backwards compatibility
-  async clearResponses(): Promise<void> {
-    return this.clearState();
   },
 };

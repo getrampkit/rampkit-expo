@@ -60,8 +60,5 @@ export type {
   PurchaseRestoredProperties,
 } from "./types";
 
-// Export onboarding state types
-export type { OnboardingState } from "./OnboardingResponseStorage";
-
 // Export constants
 export { SDK_VERSION, CAPABILITIES } from "./constants";
