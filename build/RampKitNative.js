@@ -13,16 +13,17 @@ exports.setStoredValue = setStoredValue;
 exports.getLaunchTrackingData = getLaunchTrackingData;
 const expo_modules_core_1 = require("expo-modules-core");
 const react_native_1 = require("react-native");
+const Logger_1 = require("./Logger");
 // Get the native module
 let RampKitNativeModule;
 let isNativeModuleLoaded = false;
 try {
     RampKitNativeModule = (0, expo_modules_core_1.requireNativeModule)("RampKit");
     isNativeModuleLoaded = true;
-    console.log("[RampKit] ✅ Native module loaded successfully");
+    // Don't log on success - too noisy
 }
 catch (e) {
-    console.warn("[RampKit] ⚠️ Native module not available. Using JavaScript fallback.", e);
+    Logger_1.Logger.warn("Native module not available. Using JavaScript fallback.");
     RampKitNativeModule = createFallbackModule();
 }
 // Export for debugging
@@ -210,7 +211,7 @@ exports.StoreReview = {
             await RampKitNativeModule.requestReview();
         }
         catch (e) {
-            console.warn("[RampKit] Failed to request review:", e);
+            Logger_1.Logger.warn("Failed to request review:", e);
         }
     },
     /**
@@ -291,70 +292,21 @@ exports.Notifications = {
 // Transaction Observer API (StoreKit 2 / Google Play Billing)
 // ============================================================================
 /**
- * Helper function to log entitlement check results with full details
+ * Helper function to log entitlement check results (only in verbose mode)
  */
 function logEntitlementCheckResult(result, context) {
-    console.log("[RampKit] ");
-    console.log("[RampKit] ═══════════════════════════════════════════════════════════");
-    console.log(`[RampKit] 📊 ENTITLEMENT CHECK RESULT (${context})`);
-    console.log("[RampKit] ═══════════════════════════════════════════════════════════");
-    console.log("[RampKit]    Total entitlements found:", result.totalFound);
-    console.log("[RampKit]    Already sent to backend: ", result.alreadyTracked);
-    console.log("[RampKit]    New events sent:         ", result.newPurchases);
-    console.log("[RampKit]    Tracked IDs in storage:  ", result.trackedIdsCount);
-    console.log("[RampKit]    Product IDs:             ", result.productIds);
-    // Log already tracked transactions with full details
-    if (result.alreadyTrackedDetails && result.alreadyTrackedDetails.length > 0) {
-        console.log("[RampKit] ");
-        console.log("[RampKit] ✅ ALREADY SENT TRANSACTIONS:");
-        for (const tx of result.alreadyTrackedDetails) {
-            console.log("[RampKit]    ────────────────────────────────────────");
-            console.log("[RampKit]    📦 Product:", tx.productId);
-            console.log("[RampKit]       Transaction ID:", tx.transactionId);
-            console.log("[RampKit]       Original Transaction ID:", tx.originalTransactionId);
-            console.log("[RampKit]       Purchase Date:", tx.purchaseDate);
-            if (tx.expirationDate) {
-                console.log("[RampKit]       Expiration Date:", tx.expirationDate);
-            }
-            if (tx.environment) {
-                console.log("[RampKit]       Environment:", tx.environment);
-            }
-            console.log("[RampKit]       Status: ✅ ALREADY SENT TO BACKEND");
-        }
+    if (!(0, Logger_1.isVerboseLogging)()) {
+        return;
     }
-    // Log newly sent events
-    if (result.sentEvents && result.sentEvents.length > 0) {
-        console.log("[RampKit] ");
-        console.log("[RampKit] 📤 NEWLY SENT EVENTS:");
+    Logger_1.Logger.verbose(`Entitlement check (${context}): found=${result.totalFound}, new=${result.newPurchases}, tracked=${result.alreadyTracked}`);
+    if (result.newPurchases > 0 && result.sentEvents) {
         for (const event of result.sentEvents) {
-            console.log("[RampKit]    ────────────────────────────────────────");
-            console.log("[RampKit]    📦 Product:", event.productId);
-            console.log("[RampKit]       Transaction ID:", event.transactionId);
-            console.log("[RampKit]       Original Transaction ID:", event.originalTransactionId);
-            console.log("[RampKit]       Purchase Date:", event.purchaseDate);
-            console.log("[RampKit]       Status:", event.status === "sent" ? "✅ SENT" : `❌ ${event.status.toUpperCase()}`);
-            if (event.httpStatus) {
-                console.log("[RampKit]       HTTP Status:", event.httpStatus);
-            }
-            if (event.error) {
-                console.log("[RampKit]       Error:", event.error);
-            }
-        }
-    }
-    // Log skipped transactions
-    if (result.skippedReasons && result.skippedReasons.length > 0) {
-        console.log("[RampKit] ");
-        console.log("[RampKit] ⏭️ SKIPPED TRANSACTIONS:");
-        for (const skipped of result.skippedReasons) {
-            console.log("[RampKit]    - Product:", skipped.productId, "| Reason:", skipped.reason);
+            Logger_1.Logger.verbose(`  New purchase: ${event.productId} (${event.status})`);
         }
     }
     if (result.error) {
-        console.log("[RampKit] ");
-        console.log("[RampKit] ⚠️ Error:", result.error);
+        Logger_1.Logger.warn(`Entitlement check error: ${result.error}`);
     }
-    console.log("[RampKit] ═══════════════════════════════════════════════════════════");
-    console.log("[RampKit] ");
 }
 exports.TransactionObserver = {
     /**
@@ -363,29 +315,20 @@ exports.TransactionObserver = {
      * @param appId - The RampKit app ID
      */
     async start(appId) {
-        console.log("[RampKit] 🚀 TransactionObserver.start() called");
-        console.log("[RampKit]    - appId:", appId);
-        console.log("[RampKit]    - Native module loaded:", isNativeModuleLoaded);
+        Logger_1.Logger.verbose("Starting transaction observer...");
         try {
-            console.log("[RampKit] 📡 Calling native startTransactionObserver...");
             const result = await RampKitNativeModule.startTransactionObserver(appId);
-            // Log the full result for debugging
-            console.log("[RampKit] ✅ Transaction observer result:");
-            console.log("[RampKit]    - configured:", result.configured);
-            console.log("[RampKit]    - userId:", result.userId);
-            console.log("[RampKit]    - iOSVersion:", result.iOSVersion);
-            console.log("[RampKit]    - previouslyTrackedCount:", result.previouslyTrackedCount);
-            console.log("[RampKit]    - listenerStarted:", result.listenerStarted);
+            Logger_1.Logger.verbose(`Transaction observer started: configured=${result.configured}, tracked=${result.previouslyTrackedCount}`);
             if (result.entitlementCheck) {
                 logEntitlementCheckResult(result.entitlementCheck, "STARTUP");
             }
             if (result.error) {
-                console.warn("[RampKit] ⚠️ Error:", result.error);
+                Logger_1.Logger.warn("Transaction observer error:", result.error);
             }
             return result;
         }
         catch (e) {
-            console.warn("[RampKit] ❌ Failed to start transaction observer:", e);
+            Logger_1.Logger.warn("Failed to start transaction observer:", e);
             return null;
         }
     },
@@ -395,10 +338,10 @@ exports.TransactionObserver = {
     async stop() {
         try {
             await RampKitNativeModule.stopTransactionObserver();
-            console.log("[RampKit] Transaction observer stopped");
+            Logger_1.Logger.verbose("Transaction observer stopped");
         }
         catch (e) {
-            console.warn("[RampKit] Failed to stop transaction observer:", e);
+            Logger_1.Logger.warn("Failed to stop transaction observer:", e);
         }
     },
     /**
@@ -412,12 +355,12 @@ exports.TransactionObserver = {
      */
     async trackPurchase(productId, transactionId, originalTransactionId) {
         try {
-            console.log("[RampKit] Manually tracking purchase:", productId);
+            Logger_1.Logger.verbose("Tracking purchase:", productId);
             await RampKitNativeModule.trackPurchaseCompleted(productId, transactionId, originalTransactionId);
-            console.log("[RampKit] Purchase tracked successfully:", productId);
+            Logger_1.Logger.verbose("Purchase tracked:", productId);
         }
         catch (e) {
-            console.warn("[RampKit] Failed to track purchase:", e);
+            Logger_1.Logger.warn("Failed to track purchase:", e);
         }
     },
     /**
@@ -428,12 +371,12 @@ exports.TransactionObserver = {
      */
     async trackPurchaseByProductId(productId) {
         try {
-            console.log("[RampKit] Looking up and tracking purchase for:", productId);
+            Logger_1.Logger.verbose("Looking up purchase for:", productId);
             await RampKitNativeModule.trackPurchaseFromProduct(productId);
-            console.log("[RampKit] Purchase lookup and tracking complete:", productId);
+            Logger_1.Logger.verbose("Purchase tracked:", productId);
         }
         catch (e) {
-            console.warn("[RampKit] Failed to track purchase by product:", e);
+            Logger_1.Logger.warn("Failed to track purchase by product:", e);
         }
     },
     /**
@@ -444,13 +387,13 @@ exports.TransactionObserver = {
      */
     async clearTracked() {
         try {
-            console.log("[RampKit] 🗑️ Clearing tracked transaction IDs...");
+            Logger_1.Logger.verbose("Clearing tracked transaction IDs...");
             const count = await RampKitNativeModule.clearTrackedTransactions();
-            console.log("[RampKit] ✅ Cleared", count, "tracked transaction IDs");
+            Logger_1.Logger.verbose("Cleared", count, "tracked transaction IDs");
             return count;
         }
         catch (e) {
-            console.warn("[RampKit] ❌ Failed to clear tracked transactions:", e);
+            Logger_1.Logger.warn("Failed to clear tracked transactions:", e);
             return 0;
         }
     },
@@ -462,14 +405,14 @@ exports.TransactionObserver = {
      * @returns The entitlement check result with details of all transactions
      */
     async recheck() {
-        console.log("[RampKit] 🔄 Re-checking entitlements...");
+        Logger_1.Logger.verbose("Re-checking entitlements...");
         try {
             const result = await RampKitNativeModule.recheckEntitlements();
             logEntitlementCheckResult(result, "RECHECK");
             return result;
         }
         catch (e) {
-            console.warn("[RampKit] ❌ Failed to recheck entitlements:", e);
+            Logger_1.Logger.warn("Failed to recheck entitlements:", e);
             return null;
         }
     },

@@ -62,3 +62,6 @@ export type {
 
 // Export constants
 export { SDK_VERSION, CAPABILITIES } from "./constants";
+
+// Export logging utilities
+export { setVerboseLogging } from "./Logger";

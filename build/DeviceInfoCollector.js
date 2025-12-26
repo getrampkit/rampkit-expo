@@ -15,6 +15,7 @@ exports.buildRampKitContext = buildRampKitContext;
 const react_native_1 = require("react-native");
 const RampKitNative_1 = __importDefault(require("./RampKitNative"));
 const constants_1 = require("./constants");
+const Logger_1 = require("./Logger");
 // Session-level data (regenerated each app launch)
 let sessionId = null;
 let sessionStartTime = null;
@@ -103,11 +104,11 @@ async function collectDeviceInfo() {
             // Timestamp
             collectedAt: nativeInfo.collectedAt,
         };
-        console.log("[RampKit] DeviceInfo: Collected from native module");
+        Logger_1.Logger.verbose("Device info collected");
         return deviceInfo;
     }
     catch (error) {
-        console.warn("[RampKit] DeviceInfo: Failed to collect from native module", error);
+        Logger_1.Logger.warn("Failed to collect device info from native module:", error);
         // Return minimal fallback
         return getFallbackDeviceInfo();
     }

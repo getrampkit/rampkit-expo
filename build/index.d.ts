@@ -13,3 +13,4 @@ export { Haptics, StoreReview, Notifications, TransactionObserver, isNativeModul
 export type { ImpactStyle, NotificationType, NotificationOptions, NotificationPermissionResult, TransactionObserverResult, SentEventResult, TrackedTransactionDetail, EntitlementCheckResult } from "./RampKitNative";
 export type { DeviceInfo, RampKitEvent, EventDevice, EventContext, RampKitConfig, RampKitEventName, RampKitContext, RampKitDeviceContext, RampKitUserContext, NavigationData, ScreenPosition, AppSessionStartedProperties, OnboardingStartedProperties, OnboardingCompletedProperties, OnboardingAbandonedProperties, OptionSelectedProperties, NotificationsResponseProperties, PaywallShownProperties, PurchaseStartedProperties, PurchaseCompletedProperties, PurchaseFailedProperties, PurchaseRestoredProperties, } from "./types";
 export { SDK_VERSION, CAPABILITIES } from "./constants";
+export { setVerboseLogging } from "./Logger";

@@ -12,6 +12,7 @@ const EventManager_1 = require("./EventManager");
 const RampKitNative_1 = require("./RampKitNative");
 const constants_1 = require("./constants");
 const OnboardingResponseStorage_1 = require("./OnboardingResponseStorage");
+const Logger_1 = require("./Logger");
 class RampKitCore {
     constructor() {
         this.config = null;
@@ -33,6 +34,10 @@ class RampKitCore {
      * @param config Configuration options including appId, callbacks, and optional appUserID
      */
     async configure(config) {
+        // Initialize verbose logging if enabled
+        if (config.verboseLogging) {
+            (0, Logger_1.setVerboseLogging)(true);
+        }
         this.config = config;
         this.appId = config.appId;
         this.onOnboardingFinished = config.onOnboardingFinished;
@@ -40,11 +45,11 @@ class RampKitCore {
         // Store custom App User ID if provided (this is an alias, not the RampKit user ID)
         if (config.appUserID) {
             this.appUserID = config.appUserID;
-            console.log("[RampKit] Configure: appUserID set to", this.appUserID);
+            Logger_1.Logger.verbose("appUserID set to", this.appUserID);
         }
         try {
             // Step 1: Collect device info (includes user ID generation)
-            console.log("[RampKit] Configure: Collecting device info...");
+            Logger_1.Logger.verbose("Collecting device info...");
             const baseDeviceInfo = await (0, DeviceInfoCollector_1.collectDeviceInfo)();
             // Add the custom appUserID to device info
             this.deviceInfo = {
@@ -52,41 +57,41 @@ class RampKitCore {
                 appUserID: this.appUserID,
             };
             this.userId = this.deviceInfo.appUserId;
-            console.log("[RampKit] Configure: userId", this.userId);
+            Logger_1.Logger.verbose("userId:", this.userId);
             // Step 2: Send device info to /app-users endpoint
-            console.log("[RampKit] Configure: Sending user data to backend...");
+            Logger_1.Logger.verbose("Sending user data to backend...");
             await this.sendUserDataToBackend(this.deviceInfo);
             // Step 3: Initialize event manager
-            console.log("[RampKit] Configure: Initializing event manager...");
+            Logger_1.Logger.verbose("Initializing event manager...");
             EventManager_1.eventManager.initialize(config.appId, this.deviceInfo);
             // Step 4: Track app session started
             EventManager_1.eventManager.trackAppSessionStarted(this.deviceInfo.isFirstLaunch, this.deviceInfo.launchCount);
             // Step 5: Start transaction observer for automatic purchase tracking
-            console.log("[RampKit] Configure: Starting transaction observer...");
+            Logger_1.Logger.verbose("Starting transaction observer...");
             try {
                 await RampKitNative_1.TransactionObserver.start(config.appId);
-                console.log("[RampKit] Configure: Transaction observer setup complete");
+                Logger_1.Logger.verbose("Transaction observer setup complete");
             }
             catch (txError) {
-                console.error("[RampKit] Configure: Transaction observer failed:", txError);
+                Logger_1.Logger.error("Transaction observer failed:", txError);
             }
             this.initialized = true;
         }
         catch (e) {
-            console.log("[RampKit] Configure: Failed to initialize device info", e);
+            Logger_1.Logger.warn("Failed to initialize device info:", e);
             // Fallback to just getting user ID
             try {
                 this.userId = await (0, userId_1.getRampKitUserId)();
             }
             catch (e2) {
-                console.log("[RampKit] Configure: Failed to resolve user id", e2);
+                Logger_1.Logger.warn("Failed to resolve user id:", e2);
             }
         }
         // Load onboarding data
-        console.log("[RampKit] Configure: Starting onboarding load...");
+        Logger_1.Logger.verbose("Loading onboarding data...");
         try {
             const manifestUrl = `${constants_1.MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
-            console.log("[RampKit] Configure: Fetching manifest from", manifestUrl);
+            Logger_1.Logger.verbose("Fetching manifest from", manifestUrl);
             const manifestResponse = await globalThis.fetch(manifestUrl);
             const manifest = await manifestResponse.json();
             if (!manifest.onboardings || manifest.onboardings.length === 0) {
@@ -94,23 +99,23 @@ class RampKitCore {
             }
             // Use the first onboarding
             const firstOnboarding = manifest.onboardings[0];
-            console.log("[RampKit] Configure: Using onboarding", firstOnboarding.name, firstOnboarding.id);
+            Logger_1.Logger.verbose("Using onboarding:", firstOnboarding.name);
             // Fetch the actual onboarding data
             const onboardingResponse = await globalThis.fetch(firstOnboarding.url);
             const json = await onboardingResponse.json();
             this.onboardingData = json;
-            console.log("[RampKit] Configure: onboardingId", json && json.onboardingId);
-            console.log("[RampKit] Configure: Onboarding loaded");
+            Logger_1.Logger.verbose("Onboarding loaded, id:", json === null || json === void 0 ? void 0 : json.onboardingId);
         }
         catch (error) {
-            console.log("[RampKit] Configure: Onboarding load failed", error);
+            Logger_1.Logger.verbose("Onboarding load failed:", error);
             this.onboardingData = null;
         }
-        console.log("[RampKit] Configure: Finished", config);
+        // Log SDK configured (always shown - single summary line)
+        Logger_1.Logger.info(`Configured - appId: ${config.appId}, userId: ${this.userId || "pending"}`);
         // Optionally auto-show onboarding overlay
         try {
             if (this.onboardingData && config.autoShowOnboarding) {
-                console.log("[RampKit] Configure: Auto-show onboarding");
+                Logger_1.Logger.verbose("Auto-showing onboarding");
                 this.showOnboarding();
             }
         }
@@ -120,7 +125,7 @@ class RampKitCore {
      * @deprecated Use `configure()` instead. This method will be removed in a future version.
      */
     async init(config) {
-        console.warn("[RampKit] init() is deprecated. Use configure() instead.");
+        Logger_1.Logger.warn("init() is deprecated. Use configure() instead.");
         return this.configure(config);
     }
     /**
@@ -135,7 +140,7 @@ class RampKitCore {
      */
     async setAppUserID(appUserID) {
         this.appUserID = appUserID;
-        console.log("[RampKit] setAppUserID:", appUserID);
+        Logger_1.Logger.verbose("setAppUserID:", appUserID);
         // Update device info with the new appUserID
         if (this.deviceInfo) {
             this.deviceInfo = {
@@ -146,10 +151,10 @@ class RampKitCore {
             if (this.initialized) {
                 try {
                     await this.sendUserDataToBackend(this.deviceInfo);
-                    console.log("[RampKit] setAppUserID: Synced to backend");
+                    Logger_1.Logger.verbose("setAppUserID: Synced to backend");
                 }
                 catch (e) {
-                    console.warn("[RampKit] setAppUserID: Failed to sync to backend", e);
+                    Logger_1.Logger.warn("setAppUserID: Failed to sync to backend", e);
                 }
             }
         }
@@ -186,14 +191,14 @@ class RampKitCore {
                 catch (_a) {
                     // Ignore if we can't read the body
                 }
-                console.warn(`[RampKit] Configure: Failed to send user data`, `\n  Status: ${response.status} ${response.statusText}`, `\n  URL: ${url}`, `\n  AppId: ${this.appId}`, `\n  UserId: ${deviceInfo.appUserId}`, errorDetails ? `\n  Error: ${errorDetails}` : "");
+                Logger_1.Logger.warn(`Failed to send user data: ${response.status} ${response.statusText}${errorDetails}`);
             }
             else {
-                console.log("[RampKit] Configure: User data sent successfully");
+                Logger_1.Logger.verbose("User data sent successfully");
             }
         }
         catch (error) {
-            console.warn(`[RampKit] Configure: Network error sending user data`, `\n  Error: ${error instanceof Error ? error.message : String(error)}`);
+            Logger_1.Logger.warn(`Network error sending user data: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     /**
@@ -239,7 +244,7 @@ class RampKitCore {
     showOnboarding(opts) {
         const data = this.onboardingData;
         if (!data || !Array.isArray(data.screens) || data.screens.length === 0) {
-            console.log("[RampKit] ShowOnboarding: No onboarding data available");
+            Logger_1.Logger.verbose("showOnboarding: No onboarding data available");
             return;
         }
         try {
@@ -341,7 +346,7 @@ class RampKitCore {
             });
         }
         catch (e) {
-            console.log("[RampKit] ShowOnboarding: Failed to show overlay", e);
+            Logger_1.Logger.warn("showOnboarding: Failed to show overlay", e);
         }
     }
     /**
@@ -368,10 +373,10 @@ class RampKitCore {
      */
     async reset() {
         if (!this.config) {
-            console.warn("[RampKit] Reset: No config found, cannot re-initialize");
+            Logger_1.Logger.warn("Reset: No config found, cannot re-initialize");
             return;
         }
-        console.log("[RampKit] Reset: Clearing SDK state...");
+        Logger_1.Logger.verbose("Resetting SDK state...");
         // Stop transaction observer
         await RampKitNative_1.TransactionObserver.stop();
         // Reset event manager state
@@ -386,7 +391,7 @@ class RampKitCore {
         this.appUserID = null;
         // Clear stored onboarding variables
         await OnboardingResponseStorage_1.OnboardingResponseStorage.clearVariables();
-        console.log("[RampKit] Reset: Re-initializing SDK...");
+        Logger_1.Logger.verbose("Re-initializing SDK...");
         // Re-initialize with stored config
         await this.configure(this.config);
     }

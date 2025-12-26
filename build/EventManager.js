@@ -6,6 +6,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EventManager = exports.eventManager = void 0;
 const constants_1 = require("./constants");
+const Logger_1 = require("./Logger");
 /**
  * Generate a UUID v4 using Math.random
  * This is sufficient for event IDs - no crypto dependency needed
@@ -63,7 +64,7 @@ class EventManager {
             regionCode: deviceInfo.regionCode,
         };
         this.initialized = true;
-        console.log("[RampKit] EventManager: Initialized");
+        Logger_1.Logger.verbose("EventManager initialized");
     }
     /**
      * Check if the event manager is initialized
@@ -132,7 +133,7 @@ class EventManager {
     async track(eventName, properties = {}, contextOverrides) {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         if (!this.initialized || !this.appId || !this.appUserId || !this.sessionId || !this.device) {
-            console.warn("[RampKit] EventManager: Not initialized, skipping event:", eventName);
+            Logger_1.Logger.warn("EventManager: Not initialized, skipping event:", eventName);
             return;
         }
         const eventId = generateEventId();
@@ -185,14 +186,14 @@ class EventManager {
                 catch (_a) {
                     // Ignore if we can't read the body
                 }
-                console.warn(`[RampKit] EventManager: Failed to send event: ${event.eventName}`, `\n  Status: ${response.status} ${response.statusText}`, `\n  URL: ${url}`, `\n  AppId: ${event.appId}`, `\n  UserId: ${event.appUserId}`, errorDetails ? `\n  Error: ${errorDetails}` : "");
+                Logger_1.Logger.warn(`Failed to send event ${event.eventName}: ${response.status}${errorDetails}`);
             }
             else {
-                console.log("[RampKit] EventManager: Event sent:", event.eventName);
+                Logger_1.Logger.verbose("Event sent:", event.eventName);
             }
         }
         catch (error) {
-            console.warn(`[RampKit] EventManager: Network error sending event: ${event.eventName}`, `\n  Error: ${error instanceof Error ? error.message : String(error)}`);
+            Logger_1.Logger.warn(`Network error sending event ${event.eventName}: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
     // ============================================================================
@@ -217,7 +218,7 @@ class EventManager {
     trackOnboardingAbandoned(reason, lastScreenName, onboardingId) {
         // Skip if onboarding was already completed this session
         if (this.onboardingCompletedForSession) {
-            console.log("[RampKit] EventManager: onboarding_abandoned skipped (already completed)");
+            Logger_1.Logger.verbose("onboarding_abandoned skipped (already completed)");
             return;
         }
         const timeSpentSeconds = this.getOnboardingDurationSeconds();
@@ -246,7 +247,7 @@ class EventManager {
      */
     trackOnboardingCompleted(trigger, completedSteps, totalSteps, onboardingId) {
         const timeToCompleteSeconds = this.getOnboardingDurationSeconds();
-        console.log(`[RampKit] EventManager: 📊 onboarding_completed`, `\n  trigger: ${trigger}`, `\n  onboardingId: ${onboardingId || this.currentOnboardingId}`, `\n  timeToCompleteSeconds: ${timeToCompleteSeconds}`);
+        Logger_1.Logger.verbose(`onboarding_completed: trigger=${trigger}, time=${timeToCompleteSeconds}s`);
         this.track("onboarding_completed", {
             onboardingId: onboardingId || this.currentOnboardingId,
             timeToCompleteSeconds,
@@ -284,7 +285,7 @@ class EventManager {
     trackPurchaseStarted(properties) {
         // Context (paywallId, placement) is automatically included from current state
         // which was set when trackPaywallShown was called
-        console.log(`[RampKit] EventManager: 🛒 purchase_started`, `\n  productId: ${properties.productId}`, properties.amount ? `\n  amount: ${properties.amount} ${properties.currency || ""}` : "");
+        Logger_1.Logger.verbose(`purchase_started: ${properties.productId}`);
         this.track("purchase_started", properties);
     }
     /**
@@ -294,21 +295,21 @@ class EventManager {
      */
     trackPurchaseCompleted(properties) {
         // Context is automatically included from current state (paywallId, placement, etc.)
-        console.log(`[RampKit] EventManager: ✅ purchase_completed`, `\n  productId: ${properties.productId}`, `\n  transactionId: ${properties.transactionId}`, `\n  originalTransactionId: ${properties.originalTransactionId}`, properties.isTrial ? `\n  isTrial: true` : "", properties.environment ? `\n  environment: ${properties.environment}` : "");
+        Logger_1.Logger.verbose(`purchase_completed: ${properties.productId}`);
         this.track("purchase_completed", properties);
     }
     /**
      * Track purchase failed
      */
     trackPurchaseFailed(productId, errorCode, errorMessage) {
-        console.log(`[RampKit] EventManager: ❌ purchase_failed`, `\n  productId: ${productId}`, `\n  errorCode: ${errorCode}`, `\n  errorMessage: ${errorMessage}`);
+        Logger_1.Logger.verbose(`purchase_failed: ${productId} (${errorCode})`);
         this.track("purchase_failed", { productId, errorCode, errorMessage });
     }
     /**
      * Track purchase restored
      */
     trackPurchaseRestored(properties) {
-        console.log(`[RampKit] EventManager: 🔄 purchase_restored`, `\n  productId: ${properties.productId}`, properties.transactionId ? `\n  transactionId: ${properties.transactionId}` : "", properties.originalTransactionId ? `\n  originalTransactionId: ${properties.originalTransactionId}` : "");
+        Logger_1.Logger.verbose(`purchase_restored: ${properties.productId}`);
         this.track("purchase_restored", properties);
     }
     /**

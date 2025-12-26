@@ -196,6 +196,12 @@ export interface RampKitConfig {
      * Can also be set later via RampKit.setAppUserID().
      */
     appUserID?: string;
+    /**
+     * Enable verbose logging for debugging.
+     * When true, additional debug information will be logged to the console.
+     * Default is false for minimal logging (like RevenueCat SDK).
+     */
+    verboseLogging?: boolean;
 }
 /**
  * Device context variables available in templates as ${device.xxx}

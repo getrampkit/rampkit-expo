@@ -4,6 +4,7 @@
  */
 
 import RampKitNative from "./RampKitNative";
+import { Logger } from "./Logger";
 
 export const RAMPKIT_USER_ID_KEY = "rk_user_id";
 
@@ -16,7 +17,7 @@ export async function getRampKitUserId(): Promise<string> {
     const userId = await RampKitNative.getUserId();
     return userId;
   } catch (error) {
-    console.warn("[RampKit] UserId: Failed to get from native module", error);
+    Logger.warn("Failed to get userId from native module:", error);
     // Fallback to generating a new UUID
     return generateFallbackUuid();
   }

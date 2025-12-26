@@ -10,6 +10,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RAMPKIT_USER_ID_KEY = void 0;
 exports.getRampKitUserId = getRampKitUserId;
 const RampKitNative_1 = __importDefault(require("./RampKitNative"));
+const Logger_1 = require("./Logger");
 exports.RAMPKIT_USER_ID_KEY = "rk_user_id";
 /**
  * Get or create a unique RampKit user ID
@@ -21,7 +22,7 @@ async function getRampKitUserId() {
         return userId;
     }
     catch (error) {
-        console.warn("[RampKit] UserId: Failed to get from native module", error);
+        Logger_1.Logger.warn("Failed to get userId from native module:", error);
         // Fallback to generating a new UUID
         return generateFallbackUuid();
     }

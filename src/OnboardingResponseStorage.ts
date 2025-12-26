@@ -5,6 +5,7 @@
 
 import { getStoredValue, setStoredValue } from "./RampKitNative";
 import { STORAGE_KEYS } from "./constants";
+import { Logger } from "./Logger";
 
 /**
  * Manages persistent storage of onboarding variables
@@ -20,11 +21,9 @@ export const OnboardingResponseStorage = {
         JSON.stringify(initialVariables)
       );
 
-      if (__DEV__) {
-        console.log("[RampKit] Initialized onboarding variables:", initialVariables);
-      }
+      Logger.verbose("Initialized onboarding variables");
     } catch (error) {
-      console.warn("[RampKit] Failed to initialize onboarding variables:", error);
+      Logger.warn("Failed to initialize onboarding variables:", error);
     }
   },
 
@@ -41,11 +40,9 @@ export const OnboardingResponseStorage = {
         JSON.stringify(merged)
       );
 
-      if (__DEV__) {
-        console.log("[RampKit] Updated onboarding variables:", newVariables);
-      }
+      Logger.verbose("Updated onboarding variables");
     } catch (error) {
-      console.warn("[RampKit] Failed to update onboarding variables:", error);
+      Logger.warn("Failed to update onboarding variables:", error);
     }
   },
 
@@ -60,7 +57,7 @@ export const OnboardingResponseStorage = {
       }
       return JSON.parse(jsonString) as Record<string, any>;
     } catch (error) {
-      console.warn("[RampKit] Failed to retrieve onboarding variables:", error);
+      Logger.warn("Failed to retrieve onboarding variables:", error);
       return {};
     }
   },
@@ -71,11 +68,9 @@ export const OnboardingResponseStorage = {
   async clearVariables(): Promise<void> {
     try {
       await setStoredValue(STORAGE_KEYS.ONBOARDING_RESPONSES, "");
-      if (__DEV__) {
-        console.log("[RampKit] Cleared onboarding variables");
-      }
+      Logger.verbose("Cleared onboarding variables");
     } catch (error) {
-      console.warn("[RampKit] Failed to clear onboarding variables:", error);
+      Logger.warn("Failed to clear onboarding variables:", error);
     }
   },
 };

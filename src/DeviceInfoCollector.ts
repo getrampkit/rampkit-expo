@@ -7,6 +7,7 @@ import { Platform } from "react-native";
 import RampKitNative, { NativeDeviceInfo } from "./RampKitNative";
 import { DeviceInfo, RampKitContext, RampKitDeviceContext, RampKitUserContext } from "./types";
 import { SDK_VERSION, CAPABILITIES } from "./constants";
+import { Logger } from "./Logger";
 
 // Session-level data (regenerated each app launch)
 let sessionId: string | null = null;
@@ -117,10 +118,10 @@ export async function collectDeviceInfo(): Promise<DeviceInfo> {
       collectedAt: nativeInfo.collectedAt,
     };
 
-    console.log("[RampKit] DeviceInfo: Collected from native module");
+    Logger.verbose("Device info collected");
     return deviceInfo;
   } catch (error) {
-    console.warn("[RampKit] DeviceInfo: Failed to collect from native module", error);
+    Logger.warn("Failed to collect device info from native module:", error);
     // Return minimal fallback
     return getFallbackDeviceInfo();
   }

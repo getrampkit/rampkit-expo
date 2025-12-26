@@ -14,6 +14,7 @@ import {
   PurchaseRestoredProperties,
 } from "./types";
 import { ENDPOINTS, SUPABASE_ANON_KEY } from "./constants";
+import { Logger } from "./Logger";
 
 /**
  * Generate a UUID v4 using Math.random
@@ -82,7 +83,7 @@ class EventManager {
 
     this.initialized = true;
 
-    console.log("[RampKit] EventManager: Initialized");
+    Logger.verbose("EventManager initialized");
   }
 
   /**
@@ -162,7 +163,7 @@ class EventManager {
     contextOverrides?: Partial<EventContext>
   ): Promise<void> {
     if (!this.initialized || !this.appId || !this.appUserId || !this.sessionId || !this.device) {
-      console.warn("[RampKit] EventManager: Not initialized, skipping event:", eventName);
+      Logger.warn("EventManager: Not initialized, skipping event:", eventName);
       return;
     }
 
@@ -222,22 +223,12 @@ class EventManager {
           // Ignore if we can't read the body
         }
 
-        console.warn(
-          `[RampKit] EventManager: Failed to send event: ${event.eventName}`,
-          `\n  Status: ${response.status} ${response.statusText}`,
-          `\n  URL: ${url}`,
-          `\n  AppId: ${event.appId}`,
-          `\n  UserId: ${event.appUserId}`,
-          errorDetails ? `\n  Error: ${errorDetails}` : ""
-        );
+        Logger.warn(`Failed to send event ${event.eventName}: ${response.status}${errorDetails}`);
       } else {
-        console.log("[RampKit] EventManager: Event sent:", event.eventName);
+        Logger.verbose("Event sent:", event.eventName);
       }
     } catch (error) {
-      console.warn(
-        `[RampKit] EventManager: Network error sending event: ${event.eventName}`,
-        `\n  Error: ${error instanceof Error ? error.message : String(error)}`
-      );
+      Logger.warn(`Network error sending event ${event.eventName}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -270,7 +261,7 @@ class EventManager {
   ): void {
     // Skip if onboarding was already completed this session
     if (this.onboardingCompletedForSession) {
-      console.log("[RampKit] EventManager: onboarding_abandoned skipped (already completed)");
+      Logger.verbose("onboarding_abandoned skipped (already completed)");
       return;
     }
 
@@ -307,12 +298,7 @@ class EventManager {
     onboardingId?: string
   ): void {
     const timeToCompleteSeconds = this.getOnboardingDurationSeconds();
-    console.log(
-      `[RampKit] EventManager: 📊 onboarding_completed`,
-      `\n  trigger: ${trigger}`,
-      `\n  onboardingId: ${onboardingId || this.currentOnboardingId}`,
-      `\n  timeToCompleteSeconds: ${timeToCompleteSeconds}`
-    );
+    Logger.verbose(`onboarding_completed: trigger=${trigger}, time=${timeToCompleteSeconds}s`);
     this.track("onboarding_completed", {
       onboardingId: onboardingId || this.currentOnboardingId,
       timeToCompleteSeconds,
@@ -363,11 +349,7 @@ class EventManager {
   trackPurchaseStarted(properties: PurchaseStartedProperties): void {
     // Context (paywallId, placement) is automatically included from current state
     // which was set when trackPaywallShown was called
-    console.log(
-      `[RampKit] EventManager: 🛒 purchase_started`,
-      `\n  productId: ${properties.productId}`,
-      properties.amount ? `\n  amount: ${properties.amount} ${properties.currency || ""}` : ""
-    );
+    Logger.verbose(`purchase_started: ${properties.productId}`);
     this.track("purchase_started", properties);
   }
 
@@ -378,14 +360,7 @@ class EventManager {
    */
   trackPurchaseCompleted(properties: PurchaseCompletedProperties): void {
     // Context is automatically included from current state (paywallId, placement, etc.)
-    console.log(
-      `[RampKit] EventManager: ✅ purchase_completed`,
-      `\n  productId: ${properties.productId}`,
-      `\n  transactionId: ${properties.transactionId}`,
-      `\n  originalTransactionId: ${properties.originalTransactionId}`,
-      properties.isTrial ? `\n  isTrial: true` : "",
-      properties.environment ? `\n  environment: ${properties.environment}` : ""
-    );
+    Logger.verbose(`purchase_completed: ${properties.productId}`);
     this.track("purchase_completed", properties);
   }
 
@@ -397,12 +372,7 @@ class EventManager {
     errorCode: string,
     errorMessage: string
   ): void {
-    console.log(
-      `[RampKit] EventManager: ❌ purchase_failed`,
-      `\n  productId: ${productId}`,
-      `\n  errorCode: ${errorCode}`,
-      `\n  errorMessage: ${errorMessage}`
-    );
+    Logger.verbose(`purchase_failed: ${productId} (${errorCode})`);
     this.track("purchase_failed", { productId, errorCode, errorMessage });
   }
 
@@ -410,12 +380,7 @@ class EventManager {
    * Track purchase restored
    */
   trackPurchaseRestored(properties: PurchaseRestoredProperties): void {
-    console.log(
-      `[RampKit] EventManager: 🔄 purchase_restored`,
-      `\n  productId: ${properties.productId}`,
-      properties.transactionId ? `\n  transactionId: ${properties.transactionId}` : "",
-      properties.originalTransactionId ? `\n  originalTransactionId: ${properties.originalTransactionId}` : ""
-    );
+    Logger.verbose(`purchase_restored: ${properties.productId}`);
     this.track("purchase_restored", properties);
   }
 

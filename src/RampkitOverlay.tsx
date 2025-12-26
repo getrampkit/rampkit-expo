@@ -7,6 +7,7 @@ import { WebView } from "react-native-webview";
 import { Haptics, StoreReview, Notifications } from "./RampKitNative";
 import { RampKitContext, NavigationData } from "./types";
 import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
+import { Logger, isVerboseLogging } from "./Logger";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -323,7 +324,7 @@ export const injectedDynamicTapHandler = `
                 return false;
             }
         } catch (e) {
-            console.log('[RampKit] Dynamic tap error:', e);
+            // Dynamic tap error - silent
         }
     }
 
@@ -583,7 +584,7 @@ export function showRampkitOverlay(opts: {
   // Called when close action is explicitly triggered (rampkit:close)
   onCloseAction?: (screenIndex: number, screenId: string) => void;
 }) {
-  console.log("[RampKit] showRampkitOverlay called, context:", opts.rampkitContext ? "present" : "missing");
+  Logger.verbose("showRampkitOverlay called");
   if (sibling) return; // already visible
   // Always build fresh docs to ensure templates are resolved with current context
   const prebuiltDocs: string[] | undefined = undefined;
@@ -967,8 +968,6 @@ function resolveContextTemplates(
     });
   }
 
-  console.log("[RampKit] Resolving templates with vars:", JSON.stringify(vars));
-
   // Match ${...} expressions - use a more permissive regex to capture full expressions
   // including ternary operators with quotes
   return text.replace(/\$\{([^}]+)\}/g, (match, innerExpr) => {
@@ -982,9 +981,6 @@ function resolveContextTemplates(
       const value = result
         ? parseTernaryValue(trueValue, vars)
         : parseTernaryValue(falseValue, vars);
-      console.log(
-        `[RampKit] Ternary: ${condition} ? ${trueValue} : ${falseValue} => ${result} => "${value}"`
-      );
       return value;
     }
 
@@ -992,7 +988,6 @@ function resolveContextTemplates(
     const varName = expr;
     if (vars.hasOwnProperty(varName)) {
       const value = vars[varName];
-      console.log(`[RampKit] Replacing ${match} with:`, value);
       if (value === undefined || value === null) return "";
       if (typeof value === "boolean") return value ? "true" : "false";
       if (typeof value === "object") return JSON.stringify(value);
@@ -1010,17 +1005,9 @@ function buildHtmlDocument(
   requiredScripts?: string[],
   rampkitContext?: RampKitContext
 ) {
-  console.log("[RampKit] buildHtmlDocument called");
-  console.log("[RampKit] rampkitContext received:", rampkitContext ? JSON.stringify(rampkitContext).slice(0, 200) : "undefined");
-  
   const css = screen.css || "";
   let html = screen.html || "";
   const js = screen.js || "";
-  
-  // Log if HTML contains device/user templates
-  if (html.includes("${device.") || html.includes("${user.")) {
-    console.log("[RampKit] HTML contains device/user templates");
-  }
   const scripts = (requiredScripts || [])
     .map((src) => `<script src="${src}"></script>`)
     .join("\n");
@@ -1082,18 +1069,11 @@ function buildHtmlDocument(
   };
 
   // Resolve device/user templates in HTML BEFORE sending to WebView
-  const originalHtml = html;
   html = resolveContextTemplates(html, context);
-  
+
   // Convert literal \n escape sequences to actual newlines
   // CSS white-space: pre-line will render them as line breaks
   html = html.replace(/\\n/g, '\n');
-  
-  if (originalHtml !== html) {
-    console.log("[RampKit] Templates were resolved in HTML");
-  } else if (originalHtml.includes("${device.") || originalHtml.includes("${user.")) {
-    console.log("[RampKit] WARNING: HTML still contains unresolved device/user templates!");
-  }
   
   return `<!doctype html>
 <html>
@@ -1197,9 +1177,6 @@ function Overlay(props: {
 
   // Queue an action to be executed when screen becomes active
   const queueAction = (screenIndex: number, action: () => void) => {
-    if (__DEV__) {
-      console.log(`[Rampkit] 📥 Queuing action for screen ${screenIndex}`);
-    }
     if (!pendingActionsRef.current[screenIndex]) {
       pendingActionsRef.current[screenIndex] = [];
     }
@@ -1211,15 +1188,11 @@ function Overlay(props: {
     const actions = pendingActionsRef.current[screenIndex];
     if (!actions || actions.length === 0) return;
 
-    if (__DEV__) {
-      console.log(`[Rampkit] ⚡ Processing ${actions.length} pending action(s) for screen ${screenIndex}`);
-    }
-
     for (const action of actions) {
       try {
         action();
       } catch (e) {
-        console.warn('[Rampkit] Error executing pending action:', e);
+        Logger.warn('Error executing pending action:', e);
       }
     }
 
@@ -1232,15 +1205,10 @@ function Overlay(props: {
     const wv = webviewsRef.current[screenIndex];
     if (!wv) return;
 
-    if (__DEV__) {
-      console.log(`[Rampkit] 🔓 Activating screen ${screenIndex}`);
-    }
-
     const screenId = props.screens[screenIndex]?.id || '';
     const activateScript = `(function() {
       window.__rampkitScreenVisible = true;
       window.__rampkitScreenIndex = ${screenIndex};
-      console.log('🔓 Screen ${screenIndex} ACTIVATED');
 
       // Resume all Lottie animations
       try {
@@ -1258,7 +1226,7 @@ function Overlay(props: {
             if (anim && anim.play) anim.play();
           });
         }
-      } catch(e) { console.log('Lottie play error:', e); }
+      } catch(e) { /* Lottie play error - silent */ }
 
       // Dispatch custom event that HTML can listen to
       try {
@@ -1288,8 +1256,6 @@ function Overlay(props: {
             var actions = JSON.parse(actionsStr);
             if (!Array.isArray(actions)) return;
 
-            console.log('[RampKit] Processing on-open actions:', actions.length);
-
             // Execute actions in sequence with delays
             var executeActions = function(actionList, index) {
               if (index >= actionList.length) return;
@@ -1297,8 +1263,6 @@ function Overlay(props: {
 
               var action = actionList[index];
               var actionType = action.type || action.actionType;
-
-              console.log('[RampKit] Executing on-open action:', actionType);
 
               if (actionType === 'wait') {
                 var waitMs = action.waitMs || action.duration || 1000;
@@ -1378,11 +1342,11 @@ function Overlay(props: {
             executeActions(actions, 0);
 
           } catch(e) {
-            console.log('[RampKit] Error processing on-open actions:', e);
+            // Error processing on-open actions - silent
           }
         });
       } catch(e) {
-        console.log('[RampKit] Error finding on-open actions:', e);
+        // Error finding on-open actions - silent
       }
     })();`;
 
@@ -1398,14 +1362,9 @@ function Overlay(props: {
     const wv = webviewsRef.current[screenIndex];
     if (!wv) return;
 
-    if (__DEV__) {
-      console.log(`[Rampkit] 🔒 Deactivating screen ${screenIndex}`);
-    }
-
     const deactivateScript = `(function() {
       window.__rampkitScreenVisible = false;
       window.__rampkitOnOpenActionsProcessed = false; // Reset so on-open can run again if user returns
-      console.log('🔒 Screen ${screenIndex} DEACTIVATED');
 
       // Pause all Lottie animations
       try {
@@ -1423,7 +1382,7 @@ function Overlay(props: {
             if (anim && anim.pause) anim.pause();
           });
         }
-      } catch(e) { console.log('Lottie pause error:', e); }
+      } catch(e) { /* Lottie pause error - silent */ }
     })();`;
 
     // @ts-ignore: injectJavaScript exists on WebView instance
@@ -1441,10 +1400,9 @@ function Overlay(props: {
    */
   const resolveContinue = (fromScreenId: string): string | null => {
     const navigation = props.navigation;
-    
+
     // If no navigation data, fall back to array order
     if (!navigation?.mainFlow || navigation.mainFlow.length === 0) {
-      console.log("[RampKit] 🧭 No navigation.mainFlow, using array order for __continue__");
       return null; // Will use fallback
     }
 
@@ -1456,11 +1414,8 @@ function Overlay(props: {
       // Navigate to next screen in main flow
       const nextFlowIndex = currentFlowIndex + 1;
       if (nextFlowIndex < mainFlow.length) {
-        const nextScreenId = mainFlow[nextFlowIndex];
-        console.log(`[RampKit] 🧭 __continue__ resolved via mainFlow: ${fromScreenId} → ${nextScreenId} (flow index ${currentFlowIndex} → ${nextFlowIndex})`);
-        return nextScreenId;
+        return mainFlow[nextFlowIndex];
       } else {
-        console.log(`[RampKit] 🧭 __continue__: at end of mainFlow (index ${currentFlowIndex})`);
         return null;
       }
     }
@@ -1470,8 +1425,6 @@ function Overlay(props: {
     if (screenPositions) {
       const currentPosition = screenPositions[fromScreenId];
       if (currentPosition) {
-        console.log(`[RampKit] 🧭 Current screen '${fromScreenId}' is a variant (row: ${currentPosition.row}, x: ${currentPosition.x})`);
-
         // Find the main flow screen that comes AFTER this X position
         // (the screen with the smallest X that is > currentPosition.x)
         let bestCandidate: { screenId: string; x: number } | null = null;
@@ -1486,17 +1439,14 @@ function Overlay(props: {
         }
 
         if (bestCandidate) {
-          console.log(`[RampKit] 🧭 __continue__ from variant: ${fromScreenId} → ${bestCandidate.screenId} (next main screen at x:${bestCandidate.x})`);
           return bestCandidate.screenId;
         } else {
-          console.log("[RampKit] 🧭 __continue__ from variant: no main screen to the right, end of flow");
           return null;
         }
       }
     }
 
     // Position data not available for current screen, fall back to array
-    console.log(`[RampKit] 🧭 Screen '${fromScreenId}' not found in positions, using array fallback`);
     return null;
   };
 
@@ -1507,10 +1457,9 @@ function Overlay(props: {
    */
   const resolveGoBack = (fromScreenId: string): string | null => {
     const navigation = props.navigation;
-    
+
     // If no navigation data, fall back to array order
     if (!navigation?.mainFlow || navigation.mainFlow.length === 0) {
-      console.log("[RampKit] 🧭 No navigation.mainFlow, using array order for __goBack__");
       return null; // Will use fallback
     }
 
@@ -1522,11 +1471,8 @@ function Overlay(props: {
       // Navigate to previous screen in main flow
       const prevFlowIndex = currentFlowIndex - 1;
       if (prevFlowIndex >= 0) {
-        const prevScreenId = mainFlow[prevFlowIndex];
-        console.log(`[RampKit] 🧭 __goBack__ resolved via mainFlow: ${fromScreenId} → ${prevScreenId} (flow index ${currentFlowIndex} → ${prevFlowIndex})`);
-        return prevScreenId;
+        return mainFlow[prevFlowIndex];
       } else {
-        console.log(`[RampKit] 🧭 __goBack__: at start of mainFlow (index ${currentFlowIndex})`);
         return null;
       }
     }
@@ -1536,8 +1482,6 @@ function Overlay(props: {
     if (screenPositions) {
       const currentPosition = screenPositions[fromScreenId];
       if (currentPosition) {
-        console.log(`[RampKit] 🧭 Current screen '${fromScreenId}' is a variant (row: ${currentPosition.row}, x: ${currentPosition.x})`);
-
         // Find the main flow screen that is at or before this X position
         // (the screen with the largest X that is <= currentPosition.x)
         let bestCandidate: { screenId: string; x: number } | null = null;
@@ -1552,17 +1496,14 @@ function Overlay(props: {
         }
 
         if (bestCandidate) {
-          console.log(`[RampKit] 🧭 __goBack__ from variant: ${fromScreenId} → ${bestCandidate.screenId} (main screen at x:${bestCandidate.x})`);
           return bestCandidate.screenId;
         } else {
-          console.log("[RampKit] 🧭 __goBack__ from variant: no main screen to the left, start of flow");
           return null;
         }
       }
     }
 
     // Position data not available for current screen, fall back to array
-    console.log(`[RampKit] 🧭 Screen '${fromScreenId}' not found in positions, using array fallback`);
     return null;
   };
 
@@ -1823,10 +1764,8 @@ function Overlay(props: {
         try {
           document.dispatchEvent(new CustomEvent('rampkit:vars-updated', {detail: newVars}));
         } catch(e) {}
-        
-        console.log('[RampKit] Variables updated:', Object.keys(newVars).length, 'keys');
       } catch(e) {
-        console.log('[RampKit] buildDirectVarsScript error:', e);
+        // buildDirectVarsScript error - silent
       }
     })();`;
   }
@@ -1843,7 +1782,6 @@ function Overlay(props: {
         // Call the update function if it exists
         if (typeof window.__rampkitUpdateOnboarding === 'function') {
           window.__rampkitUpdateOnboarding(${screenIndex}, '${screenId}');
-          console.log('[RampKit] Called __rampkitUpdateOnboarding(${screenIndex}, ${screenId})');
         }
         
         // Also dispatch a message event for any listeners
@@ -1864,7 +1802,7 @@ function Overlay(props: {
         } catch(e) {}
         
       } catch(e) {
-        console.log('[RampKit] sendOnboardingState error:', e);
+        // sendOnboardingState error - silent
       }
     })();`;
   }
@@ -1873,14 +1811,10 @@ function Overlay(props: {
   function sendOnboardingStateToWebView(i: number) {
     const wv = webviewsRef.current[i];
     if (!wv) return;
-    
+
     const screenId = props.screens[i]?.id || '';
     const totalScreens = props.screens.length;
-    
-    if (__DEV__) {
-      console.log("[Rampkit] sendOnboardingStateToWebView", i, { screenId, totalScreens });
-    }
-    
+
     // @ts-ignore: injectJavaScript exists on WebView instance
     wv.injectJavaScript(buildOnboardingStateScript(i, screenId, totalScreens));
   }
@@ -1888,7 +1822,6 @@ function Overlay(props: {
   function sendVarsToWebView(i: number, isInitialLoad: boolean = false) {
     const wv = webviewsRef.current[i];
     if (!wv) return;
-    if (__DEV__) console.log("[Rampkit] sendVarsToWebView", i, varsRef.current, { isInitialLoad });
     // Track when we send vars to this page for stale value filtering
     // This helps us ignore default/cached values that pages echo back
     lastVarsSendTimeRef.current[i] = Date.now();
@@ -1924,9 +1857,6 @@ function Overlay(props: {
   );
 
   React.useEffect(() => {
-    try {
-      console.log("[Rampkit] Overlay mounted: docs=", docs.length);
-    } catch (_) {}
     if (docs.length === 0) {
       setVisible(true);
       return;
@@ -1939,9 +1869,6 @@ function Overlay(props: {
     const tid = setTimeout(() => {
       setVisible((v: boolean) => {
         if (!v) {
-          try {
-            console.log("[Rampkit] Overlay fallback visible after timeout");
-          } catch (_) {}
           return true;
         }
         return v;
@@ -1972,7 +1899,6 @@ function Overlay(props: {
     // Fallback to array order
     const last = props.screens.length - 1;
     if (i < last) {
-      console.log(`[RampKit] 🧭 __continue__ fallback to array index ${i + 1}`);
       navigateToIndex(i + 1, animation);
       Haptics.impactAsync("light").catch(() => {});
     } else {
@@ -2000,7 +1926,6 @@ function Overlay(props: {
     
     // Fallback to array order
     if (i > 0) {
-      console.log(`[RampKit] 🧭 __goBack__ fallback to array index ${i - 1}`);
       navigateToIndex(i - 1, animation);
     } else {
       handleRequestClose();
@@ -2057,10 +1982,6 @@ function Overlay(props: {
       };
     }
 
-    try {
-      console.log("[Rampkit] Notification permission status:", result);
-    } catch (_) {}
-    
     // Track notification permission result
     try {
       props.onNotificationPermissionResult?.(!!result?.granted);
@@ -2123,7 +2044,6 @@ function Overlay(props: {
                 `window.__rampkitScreenVisible = ${i === 0};
                  window.__rampkitScreenIndex = ${i};
                  window.__rampkitScreenId = '${props.screens[i]?.id || ""}';
-                 console.log('[RampKit] Screen ${i} (ID: ${props.screens[i]?.id || "unknown"}) visibility initialized: ' + (${i === 0} ? 'ACTIVE' : 'INACTIVE'));
                 ` + injectedHardening + injectedDynamicTapHandler + injectedButtonAnimations
               }
               injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
@@ -2145,11 +2065,10 @@ function Overlay(props: {
               onLoadEnd={() => {
                 // Only initialize each screen ONCE to avoid repeated processing
                 if (initializedScreensRef.current.has(i)) {
-                  if (__DEV__) console.log(`[Rampkit] onLoadEnd skipped (already initialized): ${i}`);
                   return;
                 }
                 initializedScreensRef.current.add(i);
-                
+
                 setLoadedCount((c: number) => c + 1);
                 if (i === 0) {
                   setFirstPageLoaded(true);
@@ -2160,8 +2079,6 @@ function Overlay(props: {
                   }
                 }
                 // Initialize this page with current vars
-                if (__DEV__)
-                  console.log("[Rampkit] onLoadEnd initializing screen", i);
                 sendVarsToWebView(i, true);
                 // Send onboarding state to ALL screens during initial load (matching iOS SDK behavior).
                 // This prevents a visual glitch where content shifts on first navigation to each screen.
@@ -2202,7 +2119,6 @@ function Overlay(props: {
               }}
               onMessage={(ev: any) => {
                 const raw = ev.nativeEvent.data;
-                console.log("raw", raw);
                 // Accept either raw strings or JSON payloads from your editor
                 try {
                   // JSON path
@@ -2218,73 +2134,57 @@ function Overlay(props: {
                     // CRITICAL: Ignore variable updates from non-active screens
                     // Only the currently visible screen should be able to update variables
                     if (i !== activeScreenIndexRef.current) {
-                      if (__DEV__) {
-                        console.log(`[Rampkit] ignoring variables from inactive screen ${i} (active: ${activeScreenIndexRef.current})`);
-                      }
                       return;
                     }
-                    
+
                     const now = Date.now();
-                    
+
                     // Check if this screen is still in the settling period after activation
                     // During settling, we filter more aggressively to prevent stale echoes
                     const activationTime = screenActivationTimeRef.current[i] || 0;
                     const timeSinceActivation = now - activationTime;
                     const isSettling = timeSinceActivation < SCREEN_SETTLING_MS;
-                    
+
                     // Check if we recently sent vars to this page
                     const lastSendTime = lastVarsSendTimeRef.current[i] || 0;
                     const timeSinceSend = now - lastSendTime;
                     const isWithinStaleWindow = timeSinceSend < STALE_VALUE_WINDOW_MS;
-                    
-                    if (__DEV__)
-                      console.log(
-                        "[Rampkit] received variables from ACTIVE page",
-                        i,
-                        { isSettling, timeSinceActivation, isWithinStaleWindow, timeSinceSend }
-                      );
-                    
+
                     let changed = false;
                     const newVars: Record<string, any> = {};
-                    
+
                     for (const [key, value] of Object.entries<any>(data.vars)) {
                       // CRITICAL: Filter out onboarding.* variables
                       // These are read-only from the WebView's perspective
                       if (key.startsWith('onboarding.')) {
                         continue;
                       }
-                      
+
                       const hasHostVal = Object.prototype.hasOwnProperty.call(
                         varsRef.current,
                         key
                       );
                       const hostVal = (varsRef.current as any)[key];
-                      
+
                       // During settling period OR stale window: protect non-empty values
                       // This prevents the screen from clobbering user input with defaults
                       if ((isSettling || isWithinStaleWindow) && hasHostVal) {
                         const hostIsNonEmpty = hostVal !== "" && hostVal !== null && hostVal !== undefined;
                         const incomingIsEmpty = value === "" || value === null || value === undefined;
                         if (hostIsNonEmpty && incomingIsEmpty) {
-                          if (__DEV__) {
-                            console.log(`[Rampkit] protecting value for "${key}": "${hostVal}" (settling: ${isSettling})`);
-                          }
                           continue; // Skip - keep existing non-empty value
                         }
                       }
-                      
+
                       // Accept the update if value is different
                       if (!hasHostVal || hostVal !== value) {
                         newVars[key] = value;
                         changed = true;
                       }
                     }
-                    
+
                     if (changed) {
                       varsRef.current = { ...varsRef.current, ...newVars };
-                      if (__DEV__) {
-                        console.log("[Rampkit] variables updated:", newVars);
-                      }
 
                       // Persist variable updates to storage
                       OnboardingResponseStorage.updateVariables(newVars);
@@ -2299,8 +2199,6 @@ function Overlay(props: {
                   }
                   // 2) A page asked for current vars → send only to that page
                   if (data?.type === "rampkit:request-vars") {
-                    if (__DEV__)
-                      console.log("[Rampkit] request-vars from page", i);
                     sendVarsToWebView(i);
                     return;
                   }
@@ -2311,7 +2209,6 @@ function Overlay(props: {
                   ) {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring review request from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     (async () => {
@@ -2328,7 +2225,6 @@ function Overlay(props: {
                   if (data?.type === "rampkit:request-notification-permission") {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring notification request from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     handleNotificationPermissionRequest({
@@ -2360,7 +2256,6 @@ function Overlay(props: {
                   ) {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring continue from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     handleAdvance(i, data?.animation || "fade");
@@ -2369,7 +2264,6 @@ function Overlay(props: {
                   if (data?.type === "rampkit:navigate") {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring navigate from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     const target = data?.targetScreenId;
@@ -2394,7 +2288,6 @@ function Overlay(props: {
                   if (data?.type === "rampkit:goBack") {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring goBack from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     handleGoBack(i, data?.animation || "fade");
@@ -2421,7 +2314,6 @@ function Overlay(props: {
                   ) {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring ${raw} from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     handleAdvance(i);
@@ -2430,7 +2322,6 @@ function Overlay(props: {
                   if (raw === "rampkit:request-review" || raw === "rampkit:review") {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring review request (raw) from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     (async () => {
@@ -2446,7 +2337,6 @@ function Overlay(props: {
                   if (raw === "rampkit:request-notification-permission") {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring notification request (raw) from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     handleNotificationPermissionRequest(undefined);
@@ -2469,7 +2359,6 @@ function Overlay(props: {
                   if (raw === "rampkit:goBack") {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring goBack (raw) from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     handleGoBack(i);
@@ -2478,7 +2367,6 @@ function Overlay(props: {
                   if (raw.startsWith("rampkit:navigate:")) {
                     // Only process from active screen (on-open actions are handled by SDK in activateScreen)
                     if (!isScreenActive(i)) {
-                      if (__DEV__) console.log(`[Rampkit] Ignoring navigate (raw) from inactive screen ${i} (SDK handles on-open)`);
                       return;
                     }
                     const target = raw.slice("rampkit:navigate:".length);
@@ -2528,7 +2416,7 @@ function Overlay(props: {
               }}
               onError={(e: any) => {
                 // You can surface an inline error UI here if you want
-                console.warn("WebView error:", e.nativeEvent);
+                Logger.warn("WebView error:", e.nativeEvent);
               }}
             />
           </Animated.View>

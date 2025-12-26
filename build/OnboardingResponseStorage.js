@@ -7,6 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.OnboardingResponseStorage = void 0;
 const RampKitNative_1 = require("./RampKitNative");
 const constants_1 = require("./constants");
+const Logger_1 = require("./Logger");
 /**
  * Manages persistent storage of onboarding variables
  */
@@ -17,12 +18,10 @@ exports.OnboardingResponseStorage = {
     async initializeVariables(initialVariables) {
         try {
             await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES, JSON.stringify(initialVariables));
-            if (__DEV__) {
-                console.log("[RampKit] Initialized onboarding variables:", initialVariables);
-            }
+            Logger_1.Logger.verbose("Initialized onboarding variables");
         }
         catch (error) {
-            console.warn("[RampKit] Failed to initialize onboarding variables:", error);
+            Logger_1.Logger.warn("Failed to initialize onboarding variables:", error);
         }
     },
     /**
@@ -33,12 +32,10 @@ exports.OnboardingResponseStorage = {
             const current = await this.getVariables();
             const merged = { ...current, ...newVariables };
             await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES, JSON.stringify(merged));
-            if (__DEV__) {
-                console.log("[RampKit] Updated onboarding variables:", newVariables);
-            }
+            Logger_1.Logger.verbose("Updated onboarding variables");
         }
         catch (error) {
-            console.warn("[RampKit] Failed to update onboarding variables:", error);
+            Logger_1.Logger.warn("Failed to update onboarding variables:", error);
         }
     },
     /**
@@ -53,7 +50,7 @@ exports.OnboardingResponseStorage = {
             return JSON.parse(jsonString);
         }
         catch (error) {
-            console.warn("[RampKit] Failed to retrieve onboarding variables:", error);
+            Logger_1.Logger.warn("Failed to retrieve onboarding variables:", error);
             return {};
         }
     },
@@ -63,12 +60,10 @@ exports.OnboardingResponseStorage = {
     async clearVariables() {
         try {
             await (0, RampKitNative_1.setStoredValue)(constants_1.STORAGE_KEYS.ONBOARDING_RESPONSES, "");
-            if (__DEV__) {
-                console.log("[RampKit] Cleared onboarding variables");
-            }
+            Logger_1.Logger.verbose("Cleared onboarding variables");
         }
         catch (error) {
-            console.warn("[RampKit] Failed to clear onboarding variables:", error);
+            Logger_1.Logger.warn("Failed to clear onboarding variables:", error);
         }
     },
 };
