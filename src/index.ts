@@ -46,6 +46,14 @@ export type {
   // Navigation types for spatial layout-based navigation
   NavigationData,
   ScreenPosition,
+  // Manifest & Targeting types
+  Manifest,
+  ManifestTarget,
+  TargetRules,
+  TargetRule,
+  TargetOnboarding,
+  ManifestOnboarding,
+  TargetingContext,
   // Event property types
   AppSessionStartedProperties,
   OnboardingStartedProperties,
@@ -59,6 +67,11 @@ export type {
   PurchaseFailedProperties,
   PurchaseRestoredProperties,
 } from "./types";
+
+// Export targeting utilities
+export { buildTargetingContext } from "./TargetingContext";
+export { evaluateTargets, evaluateRules, evaluateRule } from "./TargetingEngine";
+export type { TargetEvaluationResult } from "./TargetingEngine";
 
 // Export constants
 export { SDK_VERSION, CAPABILITIES } from "./constants";

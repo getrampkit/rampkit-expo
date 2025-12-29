@@ -1,6 +1,95 @@
 /**
  * RampKit SDK Types
  */
+/**
+ * Root manifest structure fetched from CDN
+ */
+export interface Manifest {
+    appId: string;
+    appName: string;
+    updatedAt: string;
+    targets: ManifestTarget[];
+    onboardings: ManifestOnboarding[];
+}
+/**
+ * A target defines rules for matching users and which onboardings to show
+ */
+export interface ManifestTarget {
+    id: string;
+    name: string;
+    priority: number;
+    rules: TargetRules;
+    onboardings: TargetOnboarding[];
+}
+/**
+ * Rule matching configuration
+ */
+export interface TargetRules {
+    /** "all" = AND logic (all rules must match), "any" = OR logic (at least one must match) */
+    match: "all" | "any";
+    rules: TargetRule[];
+}
+/**
+ * Individual targeting rule
+ */
+export interface TargetRule {
+    id: string;
+    attribute: string;
+    operator: string;
+    value: string;
+}
+/**
+ * Onboarding reference within a target (includes A/B allocation)
+ */
+export interface TargetOnboarding {
+    id: string;
+    allocation: number;
+    url: string;
+}
+/**
+ * Top-level onboarding reference in manifest (metadata only)
+ */
+export interface ManifestOnboarding {
+    id: string;
+    name: string;
+    status: string;
+    version: number;
+    rules: Record<string, unknown>;
+    url: string;
+}
+/**
+ * Context used for evaluating targeting rules
+ */
+export interface TargetingContext {
+    user: {
+        isNewUser: boolean;
+        daysSinceInstall: number;
+        subscriptionStatus: string | null;
+        hasAppleSearchAdsAttribution: boolean;
+    };
+    device: {
+        platform: string;
+        model: string;
+        osVersion: string;
+        interfaceStyle: string;
+        country: string;
+        language: string;
+        locale: string;
+        currencyCode: string;
+    };
+    app: {
+        version: string;
+        buildNumber: string;
+        sdkVersion: string;
+    };
+    asa: {
+        keyword: string | null;
+        campaignId: string | null;
+    };
+    cpp: {
+        pageId: string | null;
+    };
+}
 export interface DeviceInfo {
     appUserId: string;
     /**
@@ -48,6 +137,14 @@ export interface DeviceInfo {
     capabilities: string[];
     connectionType: string | null;
     collectedAt: string;
+    /** The ID of the matched target */
+    matchedTargetId?: string | null;
+    /** The name of the matched target */
+    matchedTargetName?: string | null;
+    /** The ID of the selected onboarding */
+    matchedOnboardingId?: string | null;
+    /** The A/B test bucket (0-99) for deterministic allocation */
+    abTestBucket?: number | null;
 }
 export interface EventDevice {
     platform: string;

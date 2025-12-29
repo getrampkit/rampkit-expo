@@ -3,6 +3,7 @@
  * Main SDK class for RampKit Expo integration
  */
 import { DeviceInfo, RampKitConfig, EventContext } from "./types";
+import { TargetEvaluationResult } from "./TargetingEngine";
 export declare class RampKitCore {
     private static _instance;
     private config;
@@ -15,6 +16,8 @@ export declare class RampKitCore {
     private initialized;
     /** Custom App User ID provided by the developer (alias for their user system) */
     private appUserID;
+    /** Result of target evaluation (for analytics/debugging) */
+    private targetingResult;
     static get instance(): RampKitCore;
     /**
      * Configure the RampKit SDK
@@ -57,6 +60,10 @@ export declare class RampKitCore {
      * Get the device info
      */
     getDeviceInfo(): DeviceInfo | null;
+    /**
+     * Get the targeting result (which target matched and which onboarding was selected)
+     */
+    getTargetingResult(): TargetEvaluationResult | null;
     /**
      * Check if SDK is initialized
      */

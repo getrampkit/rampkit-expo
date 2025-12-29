@@ -17,7 +17,9 @@ import {
 } from "./DeviceInfoCollector";
 import { eventManager } from "./EventManager";
 import { TransactionObserver } from "./RampKitNative";
-import { DeviceInfo, RampKitConfig, EventContext, RampKitContext, NavigationData } from "./types";
+import { DeviceInfo, RampKitConfig, EventContext, RampKitContext, NavigationData, Manifest } from "./types";
+import { buildTargetingContext } from "./TargetingContext";
+import { evaluateTargets, TargetEvaluationResult } from "./TargetingEngine";
 import { ENDPOINTS, SUPABASE_ANON_KEY, MANIFEST_BASE_URL } from "./constants";
 import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
 import { Logger, setVerboseLogging } from "./Logger";
@@ -34,6 +36,8 @@ export class RampKitCore {
   private initialized: boolean = false;
   /** Custom App User ID provided by the developer (alias for their user system) */
   private appUserID: string | null = null;
+  /** Result of target evaluation (for analytics/debugging) */
+  private targetingResult: TargetEvaluationResult | null = null;
 
   static get instance() {
     if (!this._instance) this._instance = new RampKitCore();
@@ -107,32 +111,72 @@ export class RampKitCore {
       }
     }
 
-    // Load onboarding data
+    // Load onboarding data with targeting
     Logger.verbose("Loading onboarding data...");
     try {
       const manifestUrl = `${MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
       Logger.verbose("Fetching manifest from", manifestUrl);
       const manifestResponse = await (globalThis as any).fetch(manifestUrl);
-      const manifest = await manifestResponse.json();
+      const manifest: Manifest = await manifestResponse.json();
 
-      if (!manifest.onboardings || manifest.onboardings.length === 0) {
-        throw new Error("No onboardings found in manifest");
+      // Build targeting context from device info
+      const targetingContext = buildTargetingContext(this.deviceInfo);
+      Logger.verbose("Targeting context built:", JSON.stringify(targetingContext, null, 2));
+
+      // Evaluate targets to find matching onboarding
+      if (!manifest.targets || manifest.targets.length === 0) {
+        throw new Error("No targets found in manifest");
       }
 
-      // Use the first onboarding
-      const firstOnboarding = manifest.onboardings[0];
-      Logger.verbose("Using onboarding:", firstOnboarding.name);
-
-      // Fetch the actual onboarding data
-      const onboardingResponse = await (globalThis as any).fetch(
-        firstOnboarding.url
+      const result = evaluateTargets(
+        manifest.targets,
+        targetingContext,
+        this.userId || "anonymous"
       );
+
+      if (!result) {
+        throw new Error("No matching target found in manifest");
+      }
+
+      this.targetingResult = result;
+      Logger.verbose(
+        "Target matched:",
+        `"${result.targetName}" -> onboarding ${result.onboarding.id} (bucket ${result.bucket})`
+      );
+
+      // Track target_matched event (also sets targeting context for all future events)
+      eventManager.trackTargetMatched(
+        result.targetId,
+        result.targetName,
+        result.onboarding.id,
+        result.bucket
+      );
+
+      // Update deviceInfo with targeting data
+      if (this.deviceInfo) {
+        this.deviceInfo = {
+          ...this.deviceInfo,
+          matchedTargetId: result.targetId,
+          matchedTargetName: result.targetName,
+          matchedOnboardingId: result.onboarding.id,
+          abTestBucket: result.bucket,
+        };
+
+        // Sync updated targeting info to backend
+        this.sendUserDataToBackend(this.deviceInfo).catch((e) => {
+          Logger.warn("Failed to sync targeting info to backend:", e);
+        });
+      }
+
+      // Fetch the selected onboarding data
+      const onboardingResponse = await (globalThis as any).fetch(result.onboarding.url);
       const json = await onboardingResponse.json();
       this.onboardingData = json;
       Logger.verbose("Onboarding loaded, id:", json?.onboardingId);
     } catch (error) {
       Logger.verbose("Onboarding load failed:", error);
       this.onboardingData = null;
+      this.targetingResult = null;
     }
 
     // Log SDK configured (always shown - single summary line)
@@ -255,6 +299,13 @@ export class RampKitCore {
    */
   getDeviceInfo(): DeviceInfo | null {
     return this.deviceInfo;
+  }
+
+  /**
+   * Get the targeting result (which target matched and which onboarding was selected)
+   */
+  getTargetingResult(): TargetEvaluationResult | null {
+    return this.targetingResult;
   }
 
   /**
@@ -474,6 +525,7 @@ export class RampKitCore {
     this.userId = null;
     this.deviceInfo = null;
     this.onboardingData = null;
+    this.targetingResult = null;
     this.initialized = false;
     this.appUserID = null;
 

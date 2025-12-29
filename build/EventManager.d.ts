@@ -15,6 +15,9 @@ declare class EventManager {
     private currentVariantId;
     private currentPaywallId;
     private currentPlacement;
+    private currentTargetId;
+    private currentTargetName;
+    private currentBucket;
     private onboardingStartTime;
     private currentOnboardingId;
     private onboardingCompletedForSession;
@@ -40,6 +43,19 @@ declare class EventManager {
      * Set current paywall context
      */
     setCurrentPaywall(paywallId: string | null, placement?: string | null): void;
+    /**
+     * Set targeting context (called after target evaluation)
+     * This persists for all subsequent events
+     */
+    setTargetingContext(targetId: string, targetName: string, onboardingId: string, bucket: number): void;
+    /**
+     * Get current targeting info (for user profile updates)
+     */
+    getTargetingInfo(): {
+        targetId: string | null;
+        targetName: string | null;
+        bucket: number | null;
+    };
     /**
      * Start onboarding tracking
      */
@@ -68,6 +84,11 @@ declare class EventManager {
      * Track app session started
      */
     trackAppSessionStarted(isFirstLaunch: boolean, launchCount: number): void;
+    /**
+     * Track target matched event
+     * Called when targeting evaluation completes and a target is selected
+     */
+    trackTargetMatched(targetId: string, targetName: string, onboardingId: string, bucket: number): void;
     /**
      * Track onboarding started
      */

@@ -10,6 +10,8 @@ const userId_1 = require("./userId");
 const DeviceInfoCollector_1 = require("./DeviceInfoCollector");
 const EventManager_1 = require("./EventManager");
 const RampKitNative_1 = require("./RampKitNative");
+const TargetingContext_1 = require("./TargetingContext");
+const TargetingEngine_1 = require("./TargetingEngine");
 const constants_1 = require("./constants");
 const OnboardingResponseStorage_1 = require("./OnboardingResponseStorage");
 const Logger_1 = require("./Logger");
@@ -23,6 +25,8 @@ class RampKitCore {
         this.initialized = false;
         /** Custom App User ID provided by the developer (alias for their user system) */
         this.appUserID = null;
+        /** Result of target evaluation (for analytics/debugging) */
+        this.targetingResult = null;
     }
     static get instance() {
         if (!this._instance)
@@ -87,21 +91,44 @@ class RampKitCore {
                 Logger_1.Logger.warn("Failed to resolve user id:", e2);
             }
         }
-        // Load onboarding data
+        // Load onboarding data with targeting
         Logger_1.Logger.verbose("Loading onboarding data...");
         try {
             const manifestUrl = `${constants_1.MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
             Logger_1.Logger.verbose("Fetching manifest from", manifestUrl);
             const manifestResponse = await globalThis.fetch(manifestUrl);
             const manifest = await manifestResponse.json();
-            if (!manifest.onboardings || manifest.onboardings.length === 0) {
-                throw new Error("No onboardings found in manifest");
+            // Build targeting context from device info
+            const targetingContext = (0, TargetingContext_1.buildTargetingContext)(this.deviceInfo);
+            Logger_1.Logger.verbose("Targeting context built:", JSON.stringify(targetingContext, null, 2));
+            // Evaluate targets to find matching onboarding
+            if (!manifest.targets || manifest.targets.length === 0) {
+                throw new Error("No targets found in manifest");
             }
-            // Use the first onboarding
-            const firstOnboarding = manifest.onboardings[0];
-            Logger_1.Logger.verbose("Using onboarding:", firstOnboarding.name);
-            // Fetch the actual onboarding data
-            const onboardingResponse = await globalThis.fetch(firstOnboarding.url);
+            const result = (0, TargetingEngine_1.evaluateTargets)(manifest.targets, targetingContext, this.userId || "anonymous");
+            if (!result) {
+                throw new Error("No matching target found in manifest");
+            }
+            this.targetingResult = result;
+            Logger_1.Logger.verbose("Target matched:", `"${result.targetName}" -> onboarding ${result.onboarding.id} (bucket ${result.bucket})`);
+            // Track target_matched event (also sets targeting context for all future events)
+            EventManager_1.eventManager.trackTargetMatched(result.targetId, result.targetName, result.onboarding.id, result.bucket);
+            // Update deviceInfo with targeting data
+            if (this.deviceInfo) {
+                this.deviceInfo = {
+                    ...this.deviceInfo,
+                    matchedTargetId: result.targetId,
+                    matchedTargetName: result.targetName,
+                    matchedOnboardingId: result.onboarding.id,
+                    abTestBucket: result.bucket,
+                };
+                // Sync updated targeting info to backend
+                this.sendUserDataToBackend(this.deviceInfo).catch((e) => {
+                    Logger_1.Logger.warn("Failed to sync targeting info to backend:", e);
+                });
+            }
+            // Fetch the selected onboarding data
+            const onboardingResponse = await globalThis.fetch(result.onboarding.url);
             const json = await onboardingResponse.json();
             this.onboardingData = json;
             Logger_1.Logger.verbose("Onboarding loaded, id:", json === null || json === void 0 ? void 0 : json.onboardingId);
@@ -109,6 +136,7 @@ class RampKitCore {
         catch (error) {
             Logger_1.Logger.verbose("Onboarding load failed:", error);
             this.onboardingData = null;
+            this.targetingResult = null;
         }
         // Log SDK configured (always shown - single summary line)
         Logger_1.Logger.info(`Configured - appId: ${config.appId}, userId: ${this.userId || "pending"}`);
@@ -218,6 +246,12 @@ class RampKitCore {
      */
     getDeviceInfo() {
         return this.deviceInfo;
+    }
+    /**
+     * Get the targeting result (which target matched and which onboarding was selected)
+     */
+    getTargetingResult() {
+        return this.targetingResult;
     }
     /**
      * Check if SDK is initialized
@@ -387,6 +421,7 @@ class RampKitCore {
         this.userId = null;
         this.deviceInfo = null;
         this.onboardingData = null;
+        this.targetingResult = null;
         this.initialized = false;
         this.appUserID = null;
         // Clear stored onboarding variables

@@ -44,6 +44,11 @@ class EventManager {
   private currentPaywallId: string | null = null;
   private currentPlacement: string | null = null;
 
+  // Targeting tracking (persists for all events after target match)
+  private currentTargetId: string | null = null;
+  private currentTargetName: string | null = null;
+  private currentBucket: number | null = null;
+
   // Onboarding tracking
   private onboardingStartTime: Date | null = null;
   private currentOnboardingId: string | null = null;
@@ -121,6 +126,35 @@ class EventManager {
   }
 
   /**
+   * Set targeting context (called after target evaluation)
+   * This persists for all subsequent events
+   */
+  setTargetingContext(
+    targetId: string,
+    targetName: string,
+    onboardingId: string,
+    bucket: number
+  ): void {
+    this.currentTargetId = targetId;
+    this.currentTargetName = targetName;
+    this.currentOnboardingId = onboardingId;
+    this.currentBucket = bucket;
+    this.currentFlowId = onboardingId;
+    Logger.verbose("EventManager: Targeting context set", { targetId, targetName, bucket });
+  }
+
+  /**
+   * Get current targeting info (for user profile updates)
+   */
+  getTargetingInfo(): { targetId: string | null; targetName: string | null; bucket: number | null } {
+    return {
+      targetId: this.currentTargetId,
+      targetName: this.currentTargetName,
+      bucket: this.currentBucket,
+    };
+  }
+
+  /**
    * Start onboarding tracking
    */
   startOnboardingTracking(onboardingId: string): void {
@@ -180,6 +214,18 @@ class EventManager {
       placement: contextOverrides?.placement ?? this.currentPlacement,
     };
 
+    // Include targeting info in all events if available
+    const enrichedProperties: Record<string, any> = {
+      ...properties,
+    };
+
+    if (this.currentTargetId) {
+      enrichedProperties.targetId = this.currentTargetId;
+    }
+    if (this.currentBucket !== null) {
+      enrichedProperties.bucket = this.currentBucket;
+    }
+
     const event: RampKitEvent = {
       appId: this.appId,
       appUserId: this.appUserId,
@@ -189,7 +235,7 @@ class EventManager {
       occurredAt,
       device: this.device,
       context,
-      properties,
+      properties: enrichedProperties,
     };
 
     // Fire and forget - don't await
@@ -241,6 +287,28 @@ class EventManager {
    */
   trackAppSessionStarted(isFirstLaunch: boolean, launchCount: number): void {
     this.track("app_session_started", { isFirstLaunch, launchCount });
+  }
+
+  /**
+   * Track target matched event
+   * Called when targeting evaluation completes and a target is selected
+   */
+  trackTargetMatched(
+    targetId: string,
+    targetName: string,
+    onboardingId: string,
+    bucket: number
+  ): void {
+    // Set targeting context for all future events
+    this.setTargetingContext(targetId, targetName, onboardingId, bucket);
+
+    // Track the target_matched event
+    this.track("target_matched", {
+      targetId,
+      targetName,
+      onboardingId,
+      bucket,
+    });
   }
 
   /**
@@ -398,6 +466,9 @@ class EventManager {
     this.currentVariantId = null;
     this.currentPaywallId = null;
     this.currentPlacement = null;
+    this.currentTargetId = null;
+    this.currentTargetName = null;
+    this.currentBucket = null;
     this.onboardingStartTime = null;
     this.currentOnboardingId = null;
     this.onboardingCompletedForSession = false;
