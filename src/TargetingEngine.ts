@@ -20,6 +20,7 @@ export interface TargetEvaluationResult {
   targetId: string;
   targetName: string;
   bucket: number;
+  versionId: string | null;
 }
 
 /**
@@ -63,6 +64,7 @@ export function evaluateTargets(
         targetId: target.id,
         targetName: target.name,
         bucket,
+        versionId: onboarding.version_id || null,
       };
     }
   }
@@ -81,6 +83,7 @@ export function evaluateTargets(
     targetId: fallbackTarget.id,
     targetName: fallbackTarget.name,
     bucket,
+    versionId: onboarding.version_id || null,
   };
 }
 

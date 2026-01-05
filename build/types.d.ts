@@ -45,6 +45,8 @@ export interface TargetOnboarding {
     id: string;
     allocation: number;
     url: string;
+    /** Version ID for this specific onboarding version */
+    version_id?: string | null;
 }
 /**
  * Top-level onboarding reference in manifest (metadata only)
@@ -143,6 +145,8 @@ export interface DeviceInfo {
     matchedTargetName?: string | null;
     /** The ID of the selected onboarding */
     matchedOnboardingId?: string | null;
+    /** The version ID of the selected onboarding */
+    matchedOnboardingVersionId?: string | null;
     /** The A/B test bucket (0-99) for deterministic allocation */
     abTestBucket?: number | null;
 }

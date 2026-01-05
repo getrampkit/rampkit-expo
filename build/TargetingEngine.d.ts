@@ -11,6 +11,7 @@ export interface TargetEvaluationResult {
     targetId: string;
     targetName: string;
     bucket: number;
+    versionId: string | null;
 }
 /**
  * Evaluate all targets and return the selected onboarding

@@ -18,6 +18,7 @@ declare class EventManager {
     private currentTargetId;
     private currentTargetName;
     private currentBucket;
+    private currentVersionId;
     private onboardingStartTime;
     private currentOnboardingId;
     private onboardingCompletedForSession;
@@ -47,7 +48,7 @@ declare class EventManager {
      * Set targeting context (called after target evaluation)
      * This persists for all subsequent events
      */
-    setTargetingContext(targetId: string, targetName: string, onboardingId: string, bucket: number): void;
+    setTargetingContext(targetId: string, targetName: string, onboardingId: string, bucket: number, versionId?: string | null): void;
     /**
      * Get current targeting info (for user profile updates)
      */
@@ -88,7 +89,7 @@ declare class EventManager {
      * Track target matched event
      * Called when targeting evaluation completes and a target is selected
      */
-    trackTargetMatched(targetId: string, targetName: string, onboardingId: string, bucket: number): void;
+    trackTargetMatched(targetId: string, targetName: string, onboardingId: string, bucket: number, versionId?: string | null): void;
     /**
      * Track onboarding started
      */

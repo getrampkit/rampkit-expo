@@ -33,6 +33,7 @@ function evaluateTargets(targets, context, userId) {
                 targetId: target.id,
                 targetName: target.name,
                 bucket,
+                versionId: onboarding.version_id || null,
             };
         }
     }
@@ -45,6 +46,7 @@ function evaluateTargets(targets, context, userId) {
         targetId: fallbackTarget.id,
         targetName: fallbackTarget.name,
         bucket,
+        versionId: onboarding.version_id || null,
     };
 }
 /**

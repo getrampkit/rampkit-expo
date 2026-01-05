@@ -149,7 +149,8 @@ export class RampKitCore {
         result.targetId,
         result.targetName,
         result.onboarding.id,
-        result.bucket
+        result.bucket,
+        result.versionId
       );
 
       // Update deviceInfo with targeting data
@@ -159,6 +160,7 @@ export class RampKitCore {
           matchedTargetId: result.targetId,
           matchedTargetName: result.targetName,
           matchedOnboardingId: result.onboarding.id,
+          matchedOnboardingVersionId: result.versionId,
           abTestBucket: result.bucket,
         };
 

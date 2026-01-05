@@ -112,7 +112,7 @@ class RampKitCore {
             this.targetingResult = result;
             Logger_1.Logger.verbose("Target matched:", `"${result.targetName}" -> onboarding ${result.onboarding.id} (bucket ${result.bucket})`);
             // Track target_matched event (also sets targeting context for all future events)
-            EventManager_1.eventManager.trackTargetMatched(result.targetId, result.targetName, result.onboarding.id, result.bucket);
+            EventManager_1.eventManager.trackTargetMatched(result.targetId, result.targetName, result.onboarding.id, result.bucket, result.versionId);
             // Update deviceInfo with targeting data
             if (this.deviceInfo) {
                 this.deviceInfo = {
@@ -120,6 +120,7 @@ class RampKitCore {
                     matchedTargetId: result.targetId,
                     matchedTargetName: result.targetName,
                     matchedOnboardingId: result.onboarding.id,
+                    matchedOnboardingVersionId: result.versionId,
                     abTestBucket: result.bucket,
                 };
                 // Sync updated targeting info to backend

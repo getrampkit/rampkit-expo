@@ -35,6 +35,7 @@ class EventManager {
         this.currentTargetId = null;
         this.currentTargetName = null;
         this.currentBucket = null;
+        this.currentVersionId = null;
         // Onboarding tracking
         this.onboardingStartTime = null;
         this.currentOnboardingId = null;
@@ -104,13 +105,14 @@ class EventManager {
      * Set targeting context (called after target evaluation)
      * This persists for all subsequent events
      */
-    setTargetingContext(targetId, targetName, onboardingId, bucket) {
+    setTargetingContext(targetId, targetName, onboardingId, bucket, versionId) {
         this.currentTargetId = targetId;
         this.currentTargetName = targetName;
         this.currentOnboardingId = onboardingId;
         this.currentBucket = bucket;
+        this.currentVersionId = versionId || null;
         this.currentFlowId = onboardingId;
-        Logger_1.Logger.verbose("EventManager: Targeting context set", { targetId, targetName, bucket });
+        Logger_1.Logger.verbose("EventManager: Targeting context set", { targetId, targetName, bucket, versionId });
     }
     /**
      * Get current targeting info (for user profile updates)
@@ -245,15 +247,16 @@ class EventManager {
      * Track target matched event
      * Called when targeting evaluation completes and a target is selected
      */
-    trackTargetMatched(targetId, targetName, onboardingId, bucket) {
+    trackTargetMatched(targetId, targetName, onboardingId, bucket, versionId) {
         // Set targeting context for all future events
-        this.setTargetingContext(targetId, targetName, onboardingId, bucket);
+        this.setTargetingContext(targetId, targetName, onboardingId, bucket, versionId);
         // Track the target_matched event
         this.track("target_matched", {
             targetId,
             targetName,
             onboardingId,
             bucket,
+            versionId: versionId || null,
         });
     }
     /**
@@ -380,6 +383,7 @@ class EventManager {
         this.currentTargetId = null;
         this.currentTargetName = null;
         this.currentBucket = null;
+        this.currentVersionId = null;
         this.onboardingStartTime = null;
         this.currentOnboardingId = null;
         this.onboardingCompletedForSession = false;

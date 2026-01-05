@@ -48,6 +48,7 @@ class EventManager {
   private currentTargetId: string | null = null;
   private currentTargetName: string | null = null;
   private currentBucket: number | null = null;
+  private currentVersionId: string | null = null;
 
   // Onboarding tracking
   private onboardingStartTime: Date | null = null;
@@ -133,14 +134,16 @@ class EventManager {
     targetId: string,
     targetName: string,
     onboardingId: string,
-    bucket: number
+    bucket: number,
+    versionId?: string | null
   ): void {
     this.currentTargetId = targetId;
     this.currentTargetName = targetName;
     this.currentOnboardingId = onboardingId;
     this.currentBucket = bucket;
+    this.currentVersionId = versionId || null;
     this.currentFlowId = onboardingId;
-    Logger.verbose("EventManager: Targeting context set", { targetId, targetName, bucket });
+    Logger.verbose("EventManager: Targeting context set", { targetId, targetName, bucket, versionId });
   }
 
   /**
@@ -297,10 +300,11 @@ class EventManager {
     targetId: string,
     targetName: string,
     onboardingId: string,
-    bucket: number
+    bucket: number,
+    versionId?: string | null
   ): void {
     // Set targeting context for all future events
-    this.setTargetingContext(targetId, targetName, onboardingId, bucket);
+    this.setTargetingContext(targetId, targetName, onboardingId, bucket, versionId);
 
     // Track the target_matched event
     this.track("target_matched", {
@@ -308,6 +312,7 @@ class EventManager {
       targetName,
       onboardingId,
       bucket,
+      versionId: versionId || null,
     });
   }
 
@@ -469,6 +474,7 @@ class EventManager {
     this.currentTargetId = null;
     this.currentTargetName = null;
     this.currentBucket = null;
+    this.currentVersionId = null;
     this.onboardingStartTime = null;
     this.currentOnboardingId = null;
     this.onboardingCompletedForSession = false;
