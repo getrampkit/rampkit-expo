@@ -458,6 +458,48 @@ class EventManager {
   }
 
   /**
+   * Track screen navigation
+   */
+  trackScreenNavigated(
+    fromScreenId: string | null,
+    toScreenId: string,
+    direction: "forward" | "back",
+    trigger: "button" = "button"
+  ): void {
+    this.track("screen_navigated", {
+      fromScreenId,
+      toScreenId,
+      direction,
+      trigger,
+    });
+  }
+
+  /**
+   * Track variable set event
+   */
+  trackVariableSet(
+    variableName: string,
+    previousValue: any,
+    newValue: any
+  ): void {
+    const valueType = (() => {
+      if (newValue === null || newValue === undefined) return "unknown";
+      if (Array.isArray(newValue)) return "array";
+      if (typeof newValue === "object") return "object";
+      return typeof newValue as "string" | "number" | "boolean";
+    })();
+
+    this.track("variable_set", {
+      variableName,
+      variableType: "state",
+      valueType,
+      newValue,
+      previousValue,
+      source: "user_input",
+    });
+  }
+
+  /**
    * Reset the event manager (e.g., on logout)
    */
   reset(): void {

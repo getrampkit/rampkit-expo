@@ -8,6 +8,7 @@ import { Haptics, StoreReview, Notifications } from "./RampKitNative";
 import { RampKitContext, NavigationData } from "./types";
 import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
 import { Logger, isVerboseLogging } from "./Logger";
+import { eventManager } from "./EventManager";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -132,6 +133,27 @@ export const injectedVarsHandler = `
         }
       } catch(e) {}
     }, false);
+
+    // Listen for input blur events to notify native for debounce flush
+    document.addEventListener('blur', function(e) {
+      var target = e.target;
+      if (!target) return;
+      var tagName = target.tagName ? target.tagName.toUpperCase() : '';
+      if (tagName !== 'INPUT' && tagName !== 'TEXTAREA') return;
+
+      // Get variable name from data-var, name, or id attribute
+      var varName = target.getAttribute('data-var') || target.name || target.id;
+      if (!varName) return;
+
+      try {
+        var message = { type: 'rampkit:input-blur', variableName: varName };
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(message));
+        }
+      } catch(err) {
+        // Silently ignore messaging errors
+      }
+    }, true); // Use capture phase to catch all blur events
   } catch (_) {}
   true;
 })();
@@ -1166,6 +1188,61 @@ function Overlay(props: {
   // Settling period - ignore variable updates from a screen for this long after activation
   const SCREEN_SETTLING_MS = 300;
 
+  // Debounce tracking for variable_set events
+  // Key: variable name, Value: { previousValue, newValue, timer }
+  type PendingVariableEvent = {
+    previousValue: any;
+    newValue: any;
+    timer: ReturnType<typeof setTimeout> | null;
+  };
+  const pendingVariableEventsRef = useRef(new Map() as Map<string, PendingVariableEvent>);
+  const VARIABLE_DEBOUNCE_MS = 1000;
+
+  // Fire a variable_set event and clean up
+  const fireVariableSetEvent = (variableName: string) => {
+    const pending = pendingVariableEventsRef.current.get(variableName);
+    if (!pending) return;
+
+    // Clear timer if exists
+    if (pending.timer) {
+      clearTimeout(pending.timer);
+    }
+
+    // Fire the event
+    eventManager.trackVariableSet(variableName, pending.previousValue, pending.newValue);
+
+    // Remove from pending
+    pendingVariableEventsRef.current.delete(variableName);
+  };
+
+  // Schedule a variable_set event with debouncing
+  const scheduleVariableSetEvent = (variableName: string, previousValue: any, newValue: any) => {
+    // Clear existing timer for this variable
+    const existing = pendingVariableEventsRef.current.get(variableName);
+    if (existing?.timer) {
+      clearTimeout(existing.timer);
+    }
+
+    // Schedule new timer
+    const timer = setTimeout(() => {
+      fireVariableSetEvent(variableName);
+    }, VARIABLE_DEBOUNCE_MS);
+
+    // Store pending event
+    pendingVariableEventsRef.current.set(variableName, {
+      previousValue: existing ? existing.previousValue : previousValue, // Keep original previousValue
+      newValue,
+      timer,
+    });
+  };
+
+  // Handle input blur - immediately fire pending event for that variable
+  const handleInputBlur = (variableName: string) => {
+    if (pendingVariableEventsRef.current.has(variableName)) {
+      fireVariableSetEvent(variableName);
+    }
+  };
+
   // Queue of pending actions per screen - actions are queued when screen is inactive
   // and executed when the screen becomes active (matches iOS SDK behavior)
   const pendingActionsRef = useRef({} as Record<number, (() => void)[]>);
@@ -1591,6 +1668,12 @@ function Overlay(props: {
     // Update active screen index and activation time FIRST
     activeScreenIndexRef.current = nextIndex;
     screenActivationTimeRef.current[nextIndex] = Date.now();
+
+    // Track screen navigation event
+    const fromScreenId = props.screens[index]?.id || null;
+    const toScreenId = props.screens[nextIndex]?.id || `screen_${nextIndex}`;
+    const navigationDirection = nextIndex > index ? "forward" : "back";
+    eventManager.trackScreenNavigated(fromScreenId, toScreenId, navigationDirection);
 
     // Parse animation type case-insensitively
     const animationType = animation?.toLowerCase() || "fade";
@@ -2178,6 +2261,9 @@ function Overlay(props: {
 
                       // Accept the update if value is different
                       if (!hasHostVal || hostVal !== value) {
+                        // Schedule variable_set event with debouncing
+                        scheduleVariableSetEvent(key, hasHostVal ? hostVal : null, value);
+
                         newVars[key] = value;
                         changed = true;
                       }
@@ -2200,6 +2286,11 @@ function Overlay(props: {
                   // 2) A page asked for current vars → send only to that page
                   if (data?.type === "rampkit:request-vars") {
                     sendVarsToWebView(i);
+                    return;
+                  }
+                  // 2.5) Input blur event - flush pending variable_set event
+                  if (data?.type === "rampkit:input-blur" && data?.variableName) {
+                    handleInputBlur(data.variableName);
                     return;
                   }
                   // 3) A page requested an in-app review prompt

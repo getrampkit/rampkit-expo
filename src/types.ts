@@ -352,6 +352,34 @@ export interface PurchaseRestoredProperties {
   originalTransactionId?: string;
 }
 
+// Navigation Events
+export interface ScreenNavigatedProperties {
+  /** ID of the screen navigated from (null if first screen) */
+  fromScreenId: string | null;
+  /** ID of the screen navigated to */
+  toScreenId: string;
+  /** Direction of navigation */
+  direction: "forward" | "back";
+  /** What triggered the navigation */
+  trigger: "button";
+}
+
+// Variable Events
+export interface VariableSetProperties {
+  /** Name of the variable that was set */
+  variableName: string;
+  /** Type of the variable (always "state" for now) */
+  variableType: "state";
+  /** JavaScript type of the value */
+  valueType: "string" | "number" | "boolean" | "object" | "array" | "unknown";
+  /** The new value */
+  newValue: any;
+  /** The previous value (null if not set before) */
+  previousValue: any | null;
+  /** Source of the change */
+  source: "user_input";
+}
+
 // ============================================================================
 // Event Names
 // ============================================================================
@@ -363,7 +391,7 @@ export type OnboardingEventName =
   | "onboarding_completed"
   | "onboarding_abandoned";
 
-export type InteractionEventName = "option_selected";
+export type InteractionEventName = "option_selected" | "cta_tap" | "screen_navigated" | "variable_set";
 
 export type PermissionEventName = "notifications_response" | "tracking_response";
 

@@ -367,6 +367,39 @@ class EventManager {
         this.track("purchase_restored", properties);
     }
     /**
+     * Track screen navigation
+     */
+    trackScreenNavigated(fromScreenId, toScreenId, direction, trigger = "button") {
+        this.track("screen_navigated", {
+            fromScreenId,
+            toScreenId,
+            direction,
+            trigger,
+        });
+    }
+    /**
+     * Track variable set event
+     */
+    trackVariableSet(variableName, previousValue, newValue) {
+        const valueType = (() => {
+            if (newValue === null || newValue === undefined)
+                return "unknown";
+            if (Array.isArray(newValue))
+                return "array";
+            if (typeof newValue === "object")
+                return "object";
+            return typeof newValue;
+        })();
+        this.track("variable_set", {
+            variableName,
+            variableType: "state",
+            valueType,
+            newValue,
+            previousValue,
+            source: "user_input",
+        });
+    }
+    /**
      * Reset the event manager (e.g., on logout)
      */
     reset() {

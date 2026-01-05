@@ -51,6 +51,7 @@ const react_native_webview_1 = require("react-native-webview");
 const RampKitNative_1 = require("./RampKitNative");
 const OnboardingResponseStorage_1 = require("./OnboardingResponseStorage");
 const Logger_1 = require("./Logger");
+const EventManager_1 = require("./EventManager");
 // Reuse your injected script from App
 exports.injectedHardening = `
 (function(){
@@ -172,6 +173,27 @@ exports.injectedVarsHandler = `
         }
       } catch(e) {}
     }, false);
+
+    // Listen for input blur events to notify native for debounce flush
+    document.addEventListener('blur', function(e) {
+      var target = e.target;
+      if (!target) return;
+      var tagName = target.tagName ? target.tagName.toUpperCase() : '';
+      if (tagName !== 'INPUT' && tagName !== 'TEXTAREA') return;
+
+      // Get variable name from data-var, name, or id attribute
+      var varName = target.getAttribute('data-var') || target.name || target.id;
+      if (!varName) return;
+
+      try {
+        var message = { type: 'rampkit:input-blur', variableName: varName };
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(message));
+        }
+      } catch(err) {
+        // Silently ignore messaging errors
+      }
+    }, true); // Use capture phase to catch all blur events
   } catch (_) {}
   true;
 })();
@@ -1037,6 +1059,46 @@ function Overlay(props) {
     const screenActivationTimeRef = (0, react_1.useRef)({ 0: Date.now() });
     // Settling period - ignore variable updates from a screen for this long after activation
     const SCREEN_SETTLING_MS = 300;
+    const pendingVariableEventsRef = (0, react_1.useRef)(new Map());
+    const VARIABLE_DEBOUNCE_MS = 1000;
+    // Fire a variable_set event and clean up
+    const fireVariableSetEvent = (variableName) => {
+        const pending = pendingVariableEventsRef.current.get(variableName);
+        if (!pending)
+            return;
+        // Clear timer if exists
+        if (pending.timer) {
+            clearTimeout(pending.timer);
+        }
+        // Fire the event
+        EventManager_1.eventManager.trackVariableSet(variableName, pending.previousValue, pending.newValue);
+        // Remove from pending
+        pendingVariableEventsRef.current.delete(variableName);
+    };
+    // Schedule a variable_set event with debouncing
+    const scheduleVariableSetEvent = (variableName, previousValue, newValue) => {
+        // Clear existing timer for this variable
+        const existing = pendingVariableEventsRef.current.get(variableName);
+        if (existing === null || existing === void 0 ? void 0 : existing.timer) {
+            clearTimeout(existing.timer);
+        }
+        // Schedule new timer
+        const timer = setTimeout(() => {
+            fireVariableSetEvent(variableName);
+        }, VARIABLE_DEBOUNCE_MS);
+        // Store pending event
+        pendingVariableEventsRef.current.set(variableName, {
+            previousValue: existing ? existing.previousValue : previousValue, // Keep original previousValue
+            newValue,
+            timer,
+        });
+    };
+    // Handle input blur - immediately fire pending event for that variable
+    const handleInputBlur = (variableName) => {
+        if (pendingVariableEventsRef.current.has(variableName)) {
+            fireVariableSetEvent(variableName);
+        }
+    };
     // Queue of pending actions per screen - actions are queued when screen is inactive
     // and executed when the screen becomes active (matches iOS SDK behavior)
     const pendingActionsRef = (0, react_1.useRef)({});
@@ -1424,6 +1486,7 @@ function Overlay(props) {
     // in a stack and we animate individual screen opacity/transform values.
     // This ensures all WebViews complete their first paint before any navigation.
     const navigateToIndex = (nextIndex, animation = "fade") => {
+        var _a, _b;
         if (nextIndex === index ||
             nextIndex < 0 ||
             nextIndex >= props.screens.length)
@@ -1433,6 +1496,11 @@ function Overlay(props) {
         // Update active screen index and activation time FIRST
         activeScreenIndexRef.current = nextIndex;
         screenActivationTimeRef.current[nextIndex] = Date.now();
+        // Track screen navigation event
+        const fromScreenId = ((_a = props.screens[index]) === null || _a === void 0 ? void 0 : _a.id) || null;
+        const toScreenId = ((_b = props.screens[nextIndex]) === null || _b === void 0 ? void 0 : _b.id) || `screen_${nextIndex}`;
+        const navigationDirection = nextIndex > index ? "forward" : "back";
+        EventManager_1.eventManager.trackScreenNavigated(fromScreenId, toScreenId, navigationDirection);
         // Parse animation type case-insensitively
         const animationType = (animation === null || animation === void 0 ? void 0 : animation.toLowerCase()) || "fade";
         const currentScreenAnim = screenAnims[index];
@@ -1920,6 +1988,8 @@ function Overlay(props) {
                                             }
                                             // Accept the update if value is different
                                             if (!hasHostVal || hostVal !== value) {
+                                                // Schedule variable_set event with debouncing
+                                                scheduleVariableSetEvent(key, hasHostVal ? hostVal : null, value);
                                                 newVars[key] = value;
                                                 changed = true;
                                             }
@@ -1939,6 +2009,11 @@ function Overlay(props) {
                                     // 2) A page asked for current vars → send only to that page
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:request-vars") {
                                         sendVarsToWebView(i);
+                                        return;
+                                    }
+                                    // 2.5) Input blur event - flush pending variable_set event
+                                    if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:input-blur" && (data === null || data === void 0 ? void 0 : data.variableName)) {
+                                        handleInputBlur(data.variableName);
                                         return;
                                     }
                                     // 3) A page requested an in-app review prompt

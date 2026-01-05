@@ -147,6 +147,14 @@ declare class EventManager {
      */
     trackPurchaseRestored(properties: PurchaseRestoredProperties): void;
     /**
+     * Track screen navigation
+     */
+    trackScreenNavigated(fromScreenId: string | null, toScreenId: string, direction: "forward" | "back", trigger?: "button"): void;
+    /**
+     * Track variable set event
+     */
+    trackVariableSet(variableName: string, previousValue: any, newValue: any): void;
+    /**
      * Reset the event manager (e.g., on logout)
      */
     reset(): void;
