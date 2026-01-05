@@ -1,10 +1,9 @@
 /**
  * RampKit SDK Constants
+ * Note: SDK_VERSION is updated by sync-versions.sh from package.json
  */
 
-import { version } from "../package.json";
-
-export const SDK_VERSION = version;
+export const SDK_VERSION = "0.0.100";
 
 export const ENDPOINTS = {
   BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1",
