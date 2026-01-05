@@ -149,7 +149,7 @@ declare class EventManager {
     /**
      * Track screen navigation
      */
-    trackScreenNavigated(fromScreenId: string | null, toScreenId: string, direction: "forward" | "back", trigger?: "button"): void;
+    trackScreenNavigated(fromScreenName: string | null, toScreenName: string, direction: "forward" | "back", trigger?: "button"): void;
     /**
      * Track variable set event
      */

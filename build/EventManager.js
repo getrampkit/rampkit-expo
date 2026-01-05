@@ -369,10 +369,10 @@ class EventManager {
     /**
      * Track screen navigation
      */
-    trackScreenNavigated(fromScreenId, toScreenId, direction, trigger = "button") {
+    trackScreenNavigated(fromScreenName, toScreenName, direction, trigger = "button") {
         this.track("screen_navigated", {
-            fromScreenId,
-            toScreenId,
+            fromScreenName,
+            toScreenName,
             direction,
             trigger,
         });

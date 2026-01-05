@@ -273,10 +273,10 @@ export interface PurchaseRestoredProperties {
     originalTransactionId?: string;
 }
 export interface ScreenNavigatedProperties {
-    /** ID of the screen navigated from (null if first screen) */
-    fromScreenId: string | null;
-    /** ID of the screen navigated to */
-    toScreenId: string;
+    /** Name of the screen navigated from (null if first screen) */
+    fromScreenName: string | null;
+    /** Name of the screen navigated to */
+    toScreenName: string;
     /** Direction of navigation */
     direction: "forward" | "back";
     /** What triggered the navigation */

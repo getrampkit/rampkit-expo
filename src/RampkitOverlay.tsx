@@ -514,6 +514,7 @@ export const injectedButtonAnimations = `
 
 export type ScreenPayload = {
   id: string;
+  label?: string;
   html: string;
   css?: string;
   js?: string;
@@ -1670,10 +1671,12 @@ function Overlay(props: {
     screenActivationTimeRef.current[nextIndex] = Date.now();
 
     // Track screen navigation event
-    const fromScreenId = props.screens[index]?.id || null;
-    const toScreenId = props.screens[nextIndex]?.id || `screen_${nextIndex}`;
+    const fromScreen = props.screens[index];
+    const toScreen = props.screens[nextIndex];
+    const fromScreenName = fromScreen?.label || fromScreen?.id || null;
+    const toScreenName = toScreen?.label || toScreen?.id || `screen_${nextIndex}`;
     const navigationDirection = nextIndex > index ? "forward" : "back";
-    eventManager.trackScreenNavigated(fromScreenId, toScreenId, navigationDirection);
+    eventManager.trackScreenNavigated(fromScreenName, toScreenName, navigationDirection);
 
     // Parse animation type case-insensitively
     const animationType = animation?.toLowerCase() || "fade";

@@ -1486,7 +1486,6 @@ function Overlay(props) {
     // in a stack and we animate individual screen opacity/transform values.
     // This ensures all WebViews complete their first paint before any navigation.
     const navigateToIndex = (nextIndex, animation = "fade") => {
-        var _a, _b;
         if (nextIndex === index ||
             nextIndex < 0 ||
             nextIndex >= props.screens.length)
@@ -1497,10 +1496,12 @@ function Overlay(props) {
         activeScreenIndexRef.current = nextIndex;
         screenActivationTimeRef.current[nextIndex] = Date.now();
         // Track screen navigation event
-        const fromScreenId = ((_a = props.screens[index]) === null || _a === void 0 ? void 0 : _a.id) || null;
-        const toScreenId = ((_b = props.screens[nextIndex]) === null || _b === void 0 ? void 0 : _b.id) || `screen_${nextIndex}`;
+        const fromScreen = props.screens[index];
+        const toScreen = props.screens[nextIndex];
+        const fromScreenName = (fromScreen === null || fromScreen === void 0 ? void 0 : fromScreen.label) || (fromScreen === null || fromScreen === void 0 ? void 0 : fromScreen.id) || null;
+        const toScreenName = (toScreen === null || toScreen === void 0 ? void 0 : toScreen.label) || (toScreen === null || toScreen === void 0 ? void 0 : toScreen.id) || `screen_${nextIndex}`;
         const navigationDirection = nextIndex > index ? "forward" : "back";
-        EventManager_1.eventManager.trackScreenNavigated(fromScreenId, toScreenId, navigationDirection);
+        EventManager_1.eventManager.trackScreenNavigated(fromScreenName, toScreenName, navigationDirection);
         // Parse animation type case-insensitively
         const animationType = (animation === null || animation === void 0 ? void 0 : animation.toLowerCase()) || "fade";
         const currentScreenAnim = screenAnims[index];
