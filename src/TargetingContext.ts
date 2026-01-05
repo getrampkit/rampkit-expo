@@ -4,6 +4,7 @@
  */
 
 import { DeviceInfo, TargetingContext } from "./types";
+import { SDK_VERSION } from "./constants";
 
 /**
  * Calculate days since install from install date string
@@ -47,7 +48,7 @@ export function buildTargetingContext(deviceInfo: DeviceInfo | null): TargetingC
       app: {
         version: "1.0.0",
         buildNumber: "1",
-        sdkVersion: "1.0.0",
+        sdkVersion: SDK_VERSION,
       },
       asa: {
         keyword: null,

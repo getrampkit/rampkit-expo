@@ -1,0 +1,53 @@
+{
+    "name": "rampkit-expo-dev",
+    "version": "0.0.99",
+    "description": "The Expo SDK for RampKit. Build, test, and personalize app onboardings with instant updates.",
+    "main": "build/index.js",
+    "types": "build/index.d.ts",
+    "homepage": "https://rampkit.com",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/getrampkit/rampkit-expo"
+    },
+    "bugs": {
+        "url": "https://github.com/getrampkit/rampkit-expo/issues"
+    },
+    "keywords": [
+        "onboarding",
+        "expo",
+        "react-native",
+        "a/b testing",
+        "rampkit",
+        "mobile onboarding",
+        "marchitectures",
+        "sdk",
+        "analytics",
+        "events"
+    ],
+    "author": "RampKit",
+    "license": "MIT",
+    "files": [
+        "build",
+        "ios",
+        "android",
+        "expo-module.config.json",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc --watch --preserveWatchOutput"
+    },
+    "peerDependencies": {
+        "react": "*",
+        "react-native": "*",
+        "expo": ">=49.0.0",
+        "expo-modules-core": "*",
+        "react-native-webview": "*",
+        "react-native-pager-view": "*",
+        "react-native-root-siblings": "*"
+    },
+    "dependencies": {},
+    "devDependencies": {
+        "typescript": "^5.9.3"
+    }
+}

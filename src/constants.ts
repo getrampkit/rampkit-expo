@@ -2,7 +2,9 @@
  * RampKit SDK Constants
  */
 
-export const SDK_VERSION = "1.0.0";
+import { version } from "../package.json";
+
+export const SDK_VERSION = version;
 
 export const ENDPOINTS = {
   BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1",

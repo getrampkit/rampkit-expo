@@ -4,7 +4,8 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SUPABASE_ANON_KEY = exports.CAPABILITIES = exports.STORAGE_KEYS = exports.MANIFEST_BASE_URL = exports.ENDPOINTS = exports.SDK_VERSION = void 0;
-exports.SDK_VERSION = "0.0.99";
+const package_json_1 = require("../package.json");
+exports.SDK_VERSION = package_json_1.version;
 exports.ENDPOINTS = {
     BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1",
     APP_USERS: "/app-users",

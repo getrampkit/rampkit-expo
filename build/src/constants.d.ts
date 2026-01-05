@@ -1,7 +1,7 @@
 /**
  * RampKit SDK Constants
  */
-export declare const SDK_VERSION = "0.0.99";
+export declare const SDK_VERSION: string;
 export declare const ENDPOINTS: {
     readonly BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1";
     readonly APP_USERS: "/app-users";

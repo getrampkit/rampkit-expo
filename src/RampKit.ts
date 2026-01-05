@@ -362,20 +362,17 @@ export class RampKitCore {
       // Initialize storage with initial values
       OnboardingResponseStorage.initializeVariables(variables);
 
-      const screens = data.screens.map((s: any) => {
-        Logger.verbose(`Screen mapping - id: ${s.id}, label: ${s.label}`);
-        return {
-          id: s.id,
-          label: s.label,
-          html:
-            s.html ||
-            `<div style="padding:24px"><h1>${
-              s.label || s.id
-            }</h1><button onclick="window.ReactNativeWebView && window.ReactNativeWebView.postMessage('rampkit:tap')">Continue</button></div>`,
-          css: s.css,
-          js: s.js,
-        };
-      });
+      const screens = data.screens.map((s: any) => ({
+        id: s.id,
+        label: s.label,
+        html:
+          s.html ||
+          `<div style="padding:24px"><h1>${
+            s.label || s.id
+          }</h1><button onclick="window.ReactNativeWebView && window.ReactNativeWebView.postMessage('rampkit:tap')">Continue</button></div>`,
+        css: s.css,
+        js: s.js,
+      }));
 
       const requiredScripts: string[] = Array.isArray(data.requiredScripts)
         ? data.requiredScripts
