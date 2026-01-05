@@ -364,6 +364,7 @@ export class RampKitCore {
 
       const screens = data.screens.map((s: any) => ({
         id: s.id,
+        label: s.label,
         html:
           s.html ||
           `<div style="padding:24px"><h1>${
