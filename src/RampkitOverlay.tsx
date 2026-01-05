@@ -1673,8 +1673,11 @@ function Overlay(props: {
     // Track screen navigation event
     const fromScreen = props.screens[index];
     const toScreen = props.screens[nextIndex];
-    const fromScreenName = fromScreen?.label || fromScreen?.id || null;
-    const toScreenName = toScreen?.label || toScreen?.id || `screen_${nextIndex}`;
+    Logger.verbose(`Navigation - fromScreen: ${JSON.stringify(fromScreen)}`);
+    Logger.verbose(`Navigation - toScreen: ${JSON.stringify(toScreen)}`);
+    const fromScreenName = fromScreen?.label || null;
+    const toScreenName = toScreen?.label || "";
+    Logger.verbose(`Navigation - fromScreenName: ${fromScreenName}, toScreenName: ${toScreenName}`);
     const navigationDirection = nextIndex > index ? "forward" : "back";
     eventManager.trackScreenNavigated(fromScreenName, toScreenName, navigationDirection);
 

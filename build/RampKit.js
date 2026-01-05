@@ -299,14 +299,17 @@ class RampKitCore {
             })();
             // Initialize storage with initial values
             OnboardingResponseStorage_1.OnboardingResponseStorage.initializeVariables(variables);
-            const screens = data.screens.map((s) => ({
-                id: s.id,
-                label: s.label,
-                html: s.html ||
-                    `<div style="padding:24px"><h1>${s.label || s.id}</h1><button onclick="window.ReactNativeWebView && window.ReactNativeWebView.postMessage('rampkit:tap')">Continue</button></div>`,
-                css: s.css,
-                js: s.js,
-            }));
+            const screens = data.screens.map((s) => {
+                Logger_1.Logger.verbose(`Screen mapping - id: ${s.id}, label: ${s.label}`);
+                return {
+                    id: s.id,
+                    label: s.label,
+                    html: s.html ||
+                        `<div style="padding:24px"><h1>${s.label || s.id}</h1><button onclick="window.ReactNativeWebView && window.ReactNativeWebView.postMessage('rampkit:tap')">Continue</button></div>`,
+                    css: s.css,
+                    js: s.js,
+                };
+            });
             const requiredScripts = Array.isArray(data.requiredScripts)
                 ? data.requiredScripts
                 : [];

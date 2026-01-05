@@ -1498,8 +1498,11 @@ function Overlay(props) {
         // Track screen navigation event
         const fromScreen = props.screens[index];
         const toScreen = props.screens[nextIndex];
-        const fromScreenName = (fromScreen === null || fromScreen === void 0 ? void 0 : fromScreen.label) || (fromScreen === null || fromScreen === void 0 ? void 0 : fromScreen.id) || null;
-        const toScreenName = (toScreen === null || toScreen === void 0 ? void 0 : toScreen.label) || (toScreen === null || toScreen === void 0 ? void 0 : toScreen.id) || `screen_${nextIndex}`;
+        Logger_1.Logger.verbose(`Navigation - fromScreen: ${JSON.stringify(fromScreen)}`);
+        Logger_1.Logger.verbose(`Navigation - toScreen: ${JSON.stringify(toScreen)}`);
+        const fromScreenName = (fromScreen === null || fromScreen === void 0 ? void 0 : fromScreen.label) || null;
+        const toScreenName = (toScreen === null || toScreen === void 0 ? void 0 : toScreen.label) || "";
+        Logger_1.Logger.verbose(`Navigation - fromScreenName: ${fromScreenName}, toScreenName: ${toScreenName}`);
         const navigationDirection = nextIndex > index ? "forward" : "back";
         EventManager_1.eventManager.trackScreenNavigated(fromScreenName, toScreenName, navigationDirection);
         // Parse animation type case-insensitively
