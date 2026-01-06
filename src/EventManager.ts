@@ -476,11 +476,13 @@ class EventManager {
 
   /**
    * Track variable set event
+   * @param screenName - The screen where the variable was set (captured at time of change, not firing)
    */
   trackVariableSet(
     variableName: string,
     previousValue: any,
-    newValue: any
+    newValue: any,
+    screenName?: string | null
   ): void {
     const valueType = (() => {
       if (newValue === null || newValue === undefined) return "unknown";
@@ -496,7 +498,7 @@ class EventManager {
       newValue,
       previousValue,
       source: "user_input",
-    });
+    }, screenName ? { screenName } : undefined);
   }
 
   /**

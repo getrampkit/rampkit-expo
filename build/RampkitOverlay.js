@@ -1070,8 +1070,8 @@ function Overlay(props) {
         if (pending.timer) {
             clearTimeout(pending.timer);
         }
-        // Fire the event
-        EventManager_1.eventManager.trackVariableSet(variableName, pending.previousValue, pending.newValue);
+        // Fire the event with the screen name captured when variable changed
+        EventManager_1.eventManager.trackVariableSet(variableName, pending.previousValue, pending.newValue, pending.screenName);
         // Remove from pending
         pendingVariableEventsRef.current.delete(variableName);
     };
@@ -1082,14 +1082,18 @@ function Overlay(props) {
         if (existing === null || existing === void 0 ? void 0 : existing.timer) {
             clearTimeout(existing.timer);
         }
+        // Capture current screen name at time of change (not when event fires)
+        const currentScreen = props.screens[activeScreenIndexRef.current];
+        const screenName = (currentScreen === null || currentScreen === void 0 ? void 0 : currentScreen.label) || null;
         // Schedule new timer
         const timer = setTimeout(() => {
             fireVariableSetEvent(variableName);
         }, VARIABLE_DEBOUNCE_MS);
-        // Store pending event
+        // Store pending event with screen name
         pendingVariableEventsRef.current.set(variableName, {
             previousValue: existing ? existing.previousValue : previousValue, // Keep original previousValue
             newValue,
+            screenName: existing ? existing.screenName : screenName, // Keep original screenName
             timer,
         });
     };

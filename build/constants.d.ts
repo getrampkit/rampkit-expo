@@ -2,7 +2,7 @@
  * RampKit SDK Constants
  * Note: SDK_VERSION is updated by sync-versions.sh from package.json
  */
-export declare const SDK_VERSION = "0.0.101";
+export declare const SDK_VERSION = "0.0.102";
 export declare const ENDPOINTS: {
     readonly BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1";
     readonly APP_USERS: "/app-users";

@@ -379,8 +379,9 @@ class EventManager {
     }
     /**
      * Track variable set event
+     * @param screenName - The screen where the variable was set (captured at time of change, not firing)
      */
-    trackVariableSet(variableName, previousValue, newValue) {
+    trackVariableSet(variableName, previousValue, newValue, screenName) {
         const valueType = (() => {
             if (newValue === null || newValue === undefined)
                 return "unknown";
@@ -397,7 +398,7 @@ class EventManager {
             newValue,
             previousValue,
             source: "user_input",
-        });
+        }, screenName ? { screenName } : undefined);
     }
     /**
      * Reset the event manager (e.g., on logout)

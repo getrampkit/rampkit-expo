@@ -152,8 +152,9 @@ declare class EventManager {
     trackScreenNavigated(fromScreenName: string | null, toScreenName: string, direction: "forward" | "back", trigger?: "button"): void;
     /**
      * Track variable set event
+     * @param screenName - The screen where the variable was set (captured at time of change, not firing)
      */
-    trackVariableSet(variableName: string, previousValue: any, newValue: any): void;
+    trackVariableSet(variableName: string, previousValue: any, newValue: any, screenName?: string | null): void;
     /**
      * Reset the event manager (e.g., on logout)
      */

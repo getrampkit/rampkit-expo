@@ -1190,10 +1190,11 @@ function Overlay(props: {
   const SCREEN_SETTLING_MS = 300;
 
   // Debounce tracking for variable_set events
-  // Key: variable name, Value: { previousValue, newValue, timer }
+  // Key: variable name, Value: { previousValue, newValue, screenName, timer }
   type PendingVariableEvent = {
     previousValue: any;
     newValue: any;
+    screenName: string | null; // Captured at time of change
     timer: ReturnType<typeof setTimeout> | null;
   };
   const pendingVariableEventsRef = useRef(new Map() as Map<string, PendingVariableEvent>);
@@ -1209,8 +1210,8 @@ function Overlay(props: {
       clearTimeout(pending.timer);
     }
 
-    // Fire the event
-    eventManager.trackVariableSet(variableName, pending.previousValue, pending.newValue);
+    // Fire the event with the screen name captured when variable changed
+    eventManager.trackVariableSet(variableName, pending.previousValue, pending.newValue, pending.screenName);
 
     // Remove from pending
     pendingVariableEventsRef.current.delete(variableName);
@@ -1224,15 +1225,20 @@ function Overlay(props: {
       clearTimeout(existing.timer);
     }
 
+    // Capture current screen name at time of change (not when event fires)
+    const currentScreen = props.screens[activeScreenIndexRef.current];
+    const screenName = currentScreen?.label || null;
+
     // Schedule new timer
     const timer = setTimeout(() => {
       fireVariableSetEvent(variableName);
     }, VARIABLE_DEBOUNCE_MS);
 
-    // Store pending event
+    // Store pending event with screen name
     pendingVariableEventsRef.current.set(variableName, {
       previousValue: existing ? existing.previousValue : previousValue, // Keep original previousValue
       newValue,
+      screenName: existing ? existing.screenName : screenName, // Keep original screenName
       timer,
     });
   };

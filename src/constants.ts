@@ -3,7 +3,7 @@
  * Note: SDK_VERSION is updated by sync-versions.sh from package.json
  */
 
-export const SDK_VERSION = "0.0.101";
+export const SDK_VERSION = "0.0.102";
 
 export const ENDPOINTS = {
   BASE_URL: "https://uustlzuvjmochxkxatfx.supabase.co/functions/v1",
