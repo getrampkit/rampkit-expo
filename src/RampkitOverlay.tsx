@@ -1604,6 +1604,14 @@ function Overlay(props: {
     }
   }, [visible, isClosing, overlayOpacity]);
 
+  // Set initial screen context on mount
+  React.useEffect(() => {
+    const initialScreen = props.screens[0];
+    if (initialScreen) {
+      eventManager.setCurrentScreen(initialScreen.label || "");
+    }
+  }, []);
+
   const handleRequestClose = React.useCallback((options?: { completed?: boolean }) => {
     if (isClosing) return;
     setIsClosing(true);
@@ -1677,6 +1685,9 @@ function Overlay(props: {
     const toScreenName = toScreen?.label || "";
     const navigationDirection = nextIndex > index ? "forward" : "back";
     eventManager.trackScreenNavigated(fromScreenName, toScreenName, navigationDirection);
+
+    // Update current screen context for subsequent events (e.g., variable_set)
+    eventManager.setCurrentScreen(toScreenName);
 
     // Parse animation type case-insensitively
     const animationType = animation?.toLowerCase() || "fade";
