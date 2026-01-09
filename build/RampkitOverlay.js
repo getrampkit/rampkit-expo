@@ -2063,6 +2063,10 @@ function Overlay(props) {
                                     }
                                     // 5) Onboarding finished event from page
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:onboarding-finished") {
+                                        // Only process from active screen to prevent duplicate events
+                                        if (!isScreenActive(i)) {
+                                            return;
+                                        }
                                         setOnboardingCompleted(true);
                                         try {
                                             (_a = props.onOnboardingFinished) === null || _a === void 0 ? void 0 : _a.call(props, data === null || data === void 0 ? void 0 : data.payload);
@@ -2073,6 +2077,10 @@ function Overlay(props) {
                                     }
                                     // 6) Request to show paywall
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:show-paywall") {
+                                        // Only process from active screen to prevent duplicate events
+                                        if (!isScreenActive(i)) {
+                                            return;
+                                        }
                                         try {
                                             (_b = props.onShowPaywall) === null || _b === void 0 ? void 0 : _b.call(props, data === null || data === void 0 ? void 0 : data.payload);
                                         }
@@ -2120,6 +2128,10 @@ function Overlay(props) {
                                         return;
                                     }
                                     if ((data === null || data === void 0 ? void 0 : data.type) === "rampkit:close") {
+                                        // Only process from active screen to prevent duplicate events
+                                        if (!isScreenActive(i)) {
+                                            return;
+                                        }
                                         // Track close action for onboarding completion
                                         try {
                                             (_c = props.onCloseAction) === null || _c === void 0 ? void 0 : _c.call(props, i, ((_d = props.screens[i]) === null || _d === void 0 ? void 0 : _d.id) || "");
@@ -2170,6 +2182,10 @@ function Overlay(props) {
                                         return;
                                     }
                                     if (raw === "rampkit:onboarding-finished") {
+                                        // Only process from active screen to prevent duplicate events
+                                        if (!isScreenActive(i)) {
+                                            return;
+                                        }
                                         setOnboardingCompleted(true);
                                         try {
                                             (_e = props.onOnboardingFinished) === null || _e === void 0 ? void 0 : _e.call(props, undefined);
@@ -2179,6 +2195,10 @@ function Overlay(props) {
                                         return;
                                     }
                                     if (raw === "rampkit:show-paywall") {
+                                        // Only process from active screen to prevent duplicate events
+                                        if (!isScreenActive(i)) {
+                                            return;
+                                        }
                                         try {
                                             (_f = props.onShowPaywall) === null || _f === void 0 ? void 0 : _f.call(props);
                                         }
@@ -2217,6 +2237,10 @@ function Overlay(props) {
                                         return;
                                     }
                                     if (raw === "rampkit:close") {
+                                        // Only process from active screen to prevent duplicate events
+                                        if (!isScreenActive(i)) {
+                                            return;
+                                        }
                                         // Track close action for onboarding completion
                                         try {
                                             (_g = props.onCloseAction) === null || _g === void 0 ? void 0 : _g.call(props, i, ((_h = props.screens[i]) === null || _h === void 0 ? void 0 : _h.id) || "");

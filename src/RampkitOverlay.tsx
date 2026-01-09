@@ -2347,6 +2347,10 @@ function Overlay(props: {
                   }
                   // 5) Onboarding finished event from page
                   if (data?.type === "rampkit:onboarding-finished") {
+                    // Only process from active screen to prevent duplicate events
+                    if (!isScreenActive(i)) {
+                      return;
+                    }
                     setOnboardingCompleted(true);
                     try {
                       props.onOnboardingFinished?.(data?.payload);
@@ -2356,6 +2360,10 @@ function Overlay(props: {
                   }
                   // 6) Request to show paywall
                   if (data?.type === "rampkit:show-paywall") {
+                    // Only process from active screen to prevent duplicate events
+                    if (!isScreenActive(i)) {
+                      return;
+                    }
                     try {
                       props.onShowPaywall?.(data?.payload);
                     } catch (_) {}
@@ -2405,6 +2413,10 @@ function Overlay(props: {
                     return;
                   }
                   if (data?.type === "rampkit:close") {
+                    // Only process from active screen to prevent duplicate events
+                    if (!isScreenActive(i)) {
+                      return;
+                    }
                     // Track close action for onboarding completion
                     try {
                       props.onCloseAction?.(i, props.screens[i]?.id || "");
@@ -2454,6 +2466,10 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:onboarding-finished") {
+                    // Only process from active screen to prevent duplicate events
+                    if (!isScreenActive(i)) {
+                      return;
+                    }
                     setOnboardingCompleted(true);
                     try {
                       props.onOnboardingFinished?.(undefined);
@@ -2462,6 +2478,10 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:show-paywall") {
+                    // Only process from active screen to prevent duplicate events
+                    if (!isScreenActive(i)) {
+                      return;
+                    }
                     try {
                       props.onShowPaywall?.();
                     } catch (_) {}
@@ -2500,6 +2520,10 @@ function Overlay(props: {
                     return;
                   }
                   if (raw === "rampkit:close") {
+                    // Only process from active screen to prevent duplicate events
+                    if (!isScreenActive(i)) {
+                      return;
+                    }
                     // Track close action for onboarding completion
                     try {
                       props.onCloseAction?.(i, props.screens[i]?.id || "");
