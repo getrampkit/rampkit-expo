@@ -428,6 +428,8 @@ export class RampKitCore {
           } catch (_) {}
         },
         onShowPaywall: (payload?: any) => {
+          // Track paywall shown event
+          eventManager.trackPaywallShown("onboarding", "onboarding");
           // Track onboarding completed - trigger: paywall_shown
           eventManager.trackOnboardingCompleted(
             "paywall_shown",
