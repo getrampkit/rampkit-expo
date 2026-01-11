@@ -137,7 +137,9 @@ class RampKitCore {
                 });
             }
             // Fetch the selected onboarding data
-            const onboardingResponse = await globalThis.fetch(result.onboarding.url);
+            const onboardingCacheBuster = this.disableCache ? `?t=${Date.now()}` : '';
+            const onboardingFetchUrl = result.onboarding.url + onboardingCacheBuster;
+            const onboardingResponse = await globalThis.fetch(onboardingFetchUrl);
             const json = await onboardingResponse.json();
             this.onboardingData = json;
             Logger_1.Logger.verbose("Onboarding loaded, id:", json === null || json === void 0 ? void 0 : json.onboardingId);
