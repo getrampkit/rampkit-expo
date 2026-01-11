@@ -27,6 +27,8 @@ class RampKitCore {
         this.appUserID = null;
         /** Result of target evaluation (for analytics/debugging) */
         this.targetingResult = null;
+        /** Disable CloudFront caching for manifest and onboarding data */
+        this.disableCache = false;
     }
     static get instance() {
         if (!this._instance)

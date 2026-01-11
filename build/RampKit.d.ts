@@ -18,6 +18,8 @@ export declare class RampKitCore {
     private appUserID;
     /** Result of target evaluation (for analytics/debugging) */
     private targetingResult;
+    /** Disable CloudFront caching for manifest and onboarding data */
+    private disableCache;
     static get instance(): RampKitCore;
     /**
      * Configure the RampKit SDK

@@ -38,6 +38,8 @@ export class RampKitCore {
   private appUserID: string | null = null;
   /** Result of target evaluation (for analytics/debugging) */
   private targetingResult: TargetEvaluationResult | null = null;
+  /** Disable CloudFront caching for manifest and onboarding data */
+  private disableCache: boolean = false;
 
   static get instance() {
     if (!this._instance) this._instance = new RampKitCore();
@@ -52,6 +54,12 @@ export class RampKitCore {
     // Initialize verbose logging if enabled
     if (config.verboseLogging) {
       setVerboseLogging(true);
+    }
+
+    // Enable cache busting if requested (for testing)
+    if (config.disableCache) {
+      this.disableCache = true;
+      Logger.verbose("Cache busting enabled - manifest fetches will bypass CloudFront cache");
     }
 
     this.config = config;
