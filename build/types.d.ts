@@ -327,6 +327,13 @@ export interface RampKitConfig {
      * Default is false for minimal logging (like RevenueCat SDK).
      */
     verboseLogging?: boolean;
+    /**
+     * Disable CloudFront caching for manifest and onboarding data.
+     * When true, adds cache-busting query params to bypass CDN cache.
+     * Useful for testing when you need immediate updates.
+     * Default is false (uses normal HTTP caching).
+     */
+    disableCache?: boolean;
 }
 /**
  * Device context variables available in templates as ${device.xxx}
