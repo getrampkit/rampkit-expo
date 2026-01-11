@@ -122,7 +122,8 @@ export class RampKitCore {
     // Load onboarding data with targeting
     Logger.verbose("Loading onboarding data...");
     try {
-      const manifestUrl = `${MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
+      const cacheBuster = this.disableCache ? `?t=${Date.now()}` : '';
+      const manifestUrl = `${MANIFEST_BASE_URL}/${config.appId}/manifest.json${cacheBuster}`;
       Logger.verbose("Fetching manifest from", manifestUrl);
       const manifestResponse = await (globalThis as any).fetch(manifestUrl);
       const manifest: Manifest = await manifestResponse.json();
@@ -179,7 +180,9 @@ export class RampKitCore {
       }
 
       // Fetch the selected onboarding data
-      const onboardingResponse = await (globalThis as any).fetch(result.onboarding.url);
+      const onboardingCacheBuster = this.disableCache ? `?t=${Date.now()}` : '';
+      const onboardingFetchUrl = result.onboarding.url + onboardingCacheBuster;
+      const onboardingResponse = await (globalThis as any).fetch(onboardingFetchUrl);
       const json = await onboardingResponse.json();
       this.onboardingData = json;
       Logger.verbose("Onboarding loaded, id:", json?.onboardingId);

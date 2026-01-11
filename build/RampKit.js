@@ -44,6 +44,11 @@ class RampKitCore {
         if (config.verboseLogging) {
             (0, Logger_1.setVerboseLogging)(true);
         }
+        // Enable cache busting if requested (for testing)
+        if (config.disableCache) {
+            this.disableCache = true;
+            Logger_1.Logger.verbose("Cache busting enabled - manifest fetches will bypass CloudFront cache");
+        }
         this.config = config;
         this.appId = config.appId;
         this.onOnboardingFinished = config.onOnboardingFinished;
@@ -96,7 +101,8 @@ class RampKitCore {
         // Load onboarding data with targeting
         Logger_1.Logger.verbose("Loading onboarding data...");
         try {
-            const manifestUrl = `${constants_1.MANIFEST_BASE_URL}/${config.appId}/manifest.json`;
+            const cacheBuster = this.disableCache ? `?t=${Date.now()}` : '';
+            const manifestUrl = `${constants_1.MANIFEST_BASE_URL}/${config.appId}/manifest.json${cacheBuster}`;
             Logger_1.Logger.verbose("Fetching manifest from", manifestUrl);
             const manifestResponse = await globalThis.fetch(manifestUrl);
             const manifest = await manifestResponse.json();
