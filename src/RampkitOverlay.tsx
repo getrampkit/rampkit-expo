@@ -355,6 +355,209 @@ export const injectedDynamicTapHandler = `
 })();
 `;
 
+// Template resolver script - resolves ${variableName} patterns in HTML at runtime
+// Supports: ${varName}, ${device.platform}, ${user.id}, ${condition ? "yes" : "no"}
+// Re-resolves when variables are updated via rampkit:vars-updated event
+export const injectedTemplateResolver = `
+(function() {
+  'use strict';
+  if (window.__rampkitTemplatesResolved) return;
+
+  var ctx = window.rampkitContext || { device: {}, user: {} };
+  var stateVars = window.__rampkitVariables || {};
+
+  // Build flat variable map accessible for updates
+  window.__rampkitVars = window.__rampkitVars || {};
+  var vars = window.__rampkitVars;
+
+  // Storage for original templates (enables re-resolution on variable updates)
+  var templateStore = [];
+  var attrTemplateStore = [];
+
+  function rebuildVars() {
+    for (var key in vars) {
+      if (vars.hasOwnProperty(key)) delete vars[key];
+    }
+    // Device variables (e.g., device.platform)
+    if (ctx.device) {
+      Object.keys(ctx.device).forEach(function(key) {
+        vars['device.' + key] = ctx.device[key];
+      });
+    }
+    // User variables (e.g., user.id)
+    if (ctx.user) {
+      Object.keys(ctx.user).forEach(function(key) {
+        vars['user.' + key] = ctx.user[key];
+      });
+    }
+    // Custom state variables (e.g., gender, currentWeight)
+    Object.keys(stateVars).forEach(function(key) {
+      vars[key] = stateVars[key];
+    });
+  }
+
+  rebuildVars();
+
+  function resolveValue(value) {
+    if (!value) return '';
+    value = value.trim();
+    // Double-quoted string
+    var dq = value.match(/^"(.*)"$/);
+    if (dq) return dq[1];
+    // Single-quoted string
+    var sq = value.match(/^'(.*)'$/);
+    if (sq) return sq[1];
+    // Variable reference
+    if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(value)) {
+      var v = vars[value];
+      return (v !== undefined && v !== null) ? String(v) : '';
+    }
+    return value;
+  }
+
+  function evaluateCondition(cond) {
+    if (!cond) return false;
+    cond = cond.trim();
+    // Equality check: var == "value"
+    var eq = cond.match(/^([A-Za-z_][A-Za-z0-9_.]*)\\s*==\\s*(.+)$/);
+    if (eq) return String(vars[eq[1]] || '') === resolveValue(eq[2]);
+    // Inequality check: var != "value"
+    var neq = cond.match(/^([A-Za-z_][A-Za-z0-9_.]*)\\s*!=\\s*(.+)$/);
+    if (neq) return String(vars[neq[1]] || '') !== resolveValue(neq[2]);
+    // Truthy check: just the variable name
+    if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(cond)) {
+      var v = vars[cond];
+      return v !== undefined && v !== null && v !== '' && v !== false && v !== 0;
+    }
+    return false;
+  }
+
+  function resolveTemplate(text) {
+    if (!text || typeof text !== 'string' || text.indexOf('\${') === -1) return text;
+    return text.replace(/\\$\\{([^}]+)\\}/g, function(match, expr) {
+      if (!expr) return match;
+      expr = expr.trim();
+      if (!expr) return '';
+      // Simple variable substitution
+      if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(expr)) {
+        var v = vars[expr];
+        if (v === undefined || v === null) return '';
+        if (typeof v === 'boolean') return v ? 'true' : 'false';
+        return String(v);
+      }
+      // Ternary expression: condition ? trueValue : falseValue
+      var q = expr.indexOf('?'), c = expr.indexOf(':');
+      if (q > 0 && c > q) {
+        var condition = expr.substring(0, q).trim();
+        var rest = expr.substring(q + 1);
+        var ci = rest.indexOf(':');
+        if (ci > 0) {
+          var tv = rest.substring(0, ci).trim();
+          var fv = rest.substring(ci + 1).trim();
+          return resolveValue(evaluateCondition(condition) ? tv : fv);
+        }
+      }
+      return '';
+    });
+  }
+
+  function resolveAllTemplates() {
+    // Walk all text nodes
+    var walker = document.createTreeWalker(
+      document.body || document.documentElement,
+      NodeFilter.SHOW_TEXT, null, false
+    );
+    var node, nodes = [];
+    while (node = walker.nextNode()) {
+      if (node.textContent && node.textContent.indexOf('\${') !== -1) {
+        nodes.push(node);
+      }
+    }
+    nodes.forEach(function(n) {
+      var orig = n.textContent;
+      var resolved = resolveTemplate(orig);
+      if (resolved !== orig) {
+        templateStore.push({ node: n, original: orig });
+        n.textContent = resolved;
+      }
+    });
+    // Also resolve in common attributes
+    var attrs = ['src', 'href', 'alt', 'title', 'placeholder', 'value', 'data-text'];
+    document.querySelectorAll('*').forEach(function(el) {
+      attrs.forEach(function(a) {
+        var v = el.getAttribute(a);
+        if (v && v.indexOf('\${') !== -1) {
+          attrTemplateStore.push({ element: el, attr: a, original: v });
+          el.setAttribute(a, resolveTemplate(v));
+        }
+      });
+    });
+  }
+
+  function reResolveTemplates() {
+    // Re-resolve stored text nodes
+    templateStore.forEach(function(item) {
+      if (item.node && item.node.parentNode) {
+        item.node.textContent = resolveTemplate(item.original);
+      }
+    });
+    // Re-resolve stored attributes
+    attrTemplateStore.forEach(function(item) {
+      if (item.element && item.element.parentNode) {
+        item.element.setAttribute(item.attr, resolveTemplate(item.original));
+      }
+    });
+  }
+
+  // Listen for variable updates via custom event
+  document.addEventListener('rampkit:vars-updated', function(e) {
+    if (e.detail) {
+      Object.keys(e.detail).forEach(function(k) { stateVars[k] = e.detail[k]; });
+      window.__rampkitVariables = stateVars;
+      rebuildVars();
+      reResolveTemplates();
+    }
+  });
+
+  // Also listen for message events (native broadcasts)
+  document.addEventListener('message', function(event) {
+    try {
+      var data = event.data;
+      if (typeof data === 'string') data = JSON.parse(data);
+      if (data && data.type === 'rampkit:variables' && data.vars) {
+        Object.keys(data.vars).forEach(function(k) { stateVars[k] = data.vars[k]; });
+        window.__rampkitVariables = stateVars;
+        rebuildVars();
+        reResolveTemplates();
+      }
+    } catch(e) {}
+  });
+
+  // Run on DOM ready
+  if (document.body) {
+    resolveAllTemplates();
+  } else {
+    document.addEventListener('DOMContentLoaded', resolveAllTemplates);
+  }
+
+  window.__rampkitTemplatesResolved = true;
+
+  // Expose for manual re-resolution after dynamic content changes
+  window.rampkitResolveTemplates = function() {
+    resolveAllTemplates();
+  };
+
+  // Expose for programmatic variable updates
+  window.rampkitUpdateVariables = function(newVars) {
+    if (!newVars) return;
+    Object.keys(newVars).forEach(function(k) { stateVars[k] = newVars[k]; });
+    window.__rampkitVariables = stateVars;
+    rebuildVars();
+    reResolveTemplates();
+  };
+})();
+`;
+
 // Button tap animation script - handles spring animations for interactive elements
 // Triggers on touchstart (not click) for immediate feedback
 // Uses inline styles for maximum compatibility
@@ -691,7 +894,7 @@ export function preloadRampkitOverlay(opts: {
           originWhitelist={["*"]}
           source={{ html: docs[0] || "<html></html>" }}
           injectedJavaScriptBeforeContentLoaded={injectedHardening + injectedButtonAnimations}
-          injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
+          injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations + injectedTemplateResolver}
           automaticallyAdjustContentInsets={false}
           contentInsetAdjustmentBehavior="never"
           bounces={false}
@@ -2149,7 +2352,7 @@ function Overlay(props: {
                  window.__rampkitScreenId = '${props.screens[i]?.id || ""}';
                 ` + injectedHardening + injectedDynamicTapHandler + injectedButtonAnimations
               }
-              injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations}
+              injectedJavaScript={injectedNoSelect + injectedVarsHandler + injectedButtonAnimations + injectedTemplateResolver}
               automaticallyAdjustContentInsets={false}
               contentInsetAdjustmentBehavior="never"
               bounces={false}
