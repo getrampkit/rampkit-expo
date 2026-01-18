@@ -121,11 +121,7 @@ public class RampKitModule: Module {
 
     AsyncFunction("recheckEntitlements") { () -> [String: Any] in
       print("[RampKit] 🔄 Re-checking entitlements (called from JS)...")
-      if #available(iOS 15.0, *) {
-        return await self.checkAndTrackCurrentEntitlements()
-      } else {
-        return ["error": "iOS 15+ required"]
-      }
+      return await self.checkAndTrackCurrentEntitlements()
     }
 
     // ============================================================================
@@ -364,12 +360,8 @@ public class RampKitModule: Module {
   
   private func requestStoreReview() {
     DispatchQueue.main.async {
-      if #available(iOS 14.0, *) {
-        if let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
-          SKStoreReviewController.requestReview(in: scene)
-        }
-      } else {
-        SKStoreReviewController.requestReview()
+      if let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+        SKStoreReviewController.requestReview(in: scene)
       }
     }
   }
@@ -466,19 +458,14 @@ public class RampKitModule: Module {
       "iOSVersion": UIDevice.current.systemVersion
     ]
 
-    if #available(iOS 15.0, *) {
-      // CRITICAL: Check current entitlements for any purchases we missed
-      // This is the KEY mechanism for catching Superwall/RevenueCat purchases
-      let entitlementResult = await self.checkAndTrackCurrentEntitlements()
-      result["entitlementCheck"] = entitlementResult
+    // CRITICAL: Check current entitlements for any purchases we missed
+    // This is the KEY mechanism for catching Superwall/RevenueCat purchases
+    let entitlementResult = await self.checkAndTrackCurrentEntitlements()
+    result["entitlementCheck"] = entitlementResult
 
-      // Also start listening for future transactions
-      await self.startTransactionUpdatesListener()
-      result["listenerStarted"] = true
-    } else {
-      result["error"] = "iOS 15+ required for StoreKit 2"
-      result["listenerStarted"] = false
-    }
+    // Also start listening for future transactions
+    await self.startTransactionUpdatesListener()
+    result["listenerStarted"] = true
 
     return result
   }
@@ -495,7 +482,6 @@ public class RampKitModule: Module {
   /// currentEntitlements only returns ACTIVE entitlements. If a user purchases a subscription
   /// and it expires, or if they upgrade (superseding the old transaction), currentEntitlements
   /// will NOT include the original purchase. Transaction.all returns the complete history.
-  @available(iOS 15.0, *)
   private func checkAndTrackCurrentEntitlements() async -> [String: Any] {
     print("[RampKit] ")
     print("[RampKit] ════════════════════════════════════════════════════════════")
@@ -636,7 +622,6 @@ public class RampKitModule: Module {
   }
 
   /// Start listening for Transaction.updates (for future purchases)
-  @available(iOS 15.0, *)
   private func startTransactionUpdatesListener() async {
     guard transactionObserverTask == nil else {
       print("[RampKit] Transaction updates listener already running")
@@ -703,7 +688,6 @@ public class RampKitModule: Module {
     print("[RampKit] Transaction observer stopped")
   }
 
-  @available(iOS 15.0, *)
   private func handleTransaction(_ transaction: Transaction) async {
     print("[RampKit] 🔄 handleTransaction called for: \(transaction.productID)")
     print("[RampKit]    - id: \(transaction.id)")
@@ -798,7 +782,6 @@ public class RampKitModule: Module {
   }
 
   /// Handle transaction and return result for JS logging
-  @available(iOS 15.0, *)
   private func handleTransactionWithResult(_ transaction: Transaction) async -> [String: Any] {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -891,7 +874,6 @@ public class RampKitModule: Module {
     return result
   }
 
-  @available(iOS 15.0, *)
   private func formatOfferType(_ offerType: Transaction.OfferType) -> String {
     if offerType == .introductory {
       return "introductory"
@@ -904,7 +886,6 @@ public class RampKitModule: Module {
     }
   }
 
-  @available(iOS 15.0, *)
   private func formatSubscriptionPeriod(_ period: Product.SubscriptionPeriod) -> String {
     // ISO 8601 duration format
     let unit = period.unit
@@ -921,7 +902,6 @@ public class RampKitModule: Module {
     }
   }
   
-  @available(iOS 15.0, *)
   private func getProduct(for productId: String) async -> Product? {
     do {
       let products = try await Product.products(for: [productId])
@@ -931,7 +911,6 @@ public class RampKitModule: Module {
     }
   }
   
-  @available(iOS 15.0, *)
   private func mapProductType(_ type: Product.ProductType) -> String {
     // Use if-else to avoid switch exhaustiveness issues with resilient enums
     if type == .consumable {
@@ -1079,7 +1058,6 @@ public class RampKitModule: Module {
 
   /// Track a purchase manually when you have the transaction IDs
   /// Use this when Superwall or RevenueCat provides the transaction info
-  @available(iOS 15.0, *)
   private func trackPurchaseCompletedManually(
     productId: String,
     transactionId: String?,
@@ -1141,7 +1119,6 @@ public class RampKitModule: Module {
 
   /// Track a purchase by looking up the latest transaction for a product
   /// Use this when you only know the productId (Superwall doesn't always provide transaction IDs)
-  @available(iOS 15.0, *)
   private func trackPurchaseFromProductId(productId: String) async {
     print("[RampKit] 🔍 Looking up transaction for product: \(productId)")
 
@@ -1198,14 +1175,11 @@ public class RampKitModule: Module {
   }
   
   private func getInterfaceStyle() -> String {
-    if #available(iOS 13.0, *) {
-      switch UITraitCollection.current.userInterfaceStyle {
-      case .dark: return "dark"
-      case .light: return "light"
-      case .unspecified: return "unspecified"
-      @unknown default: return "unspecified"
-      }
+    switch UITraitCollection.current.userInterfaceStyle {
+    case .dark: return "dark"
+    case .light: return "light"
+    case .unspecified: return "unspecified"
+    @unknown default: return "unspecified"
     }
-    return "light"
   }
 }
