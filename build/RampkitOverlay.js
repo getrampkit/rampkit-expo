@@ -321,6 +321,8 @@ exports.injectedDynamicTapHandler = `
                 msg = { type: 'rampkit:request-notification-permission' };
                 break;
             case 'onboardingfinished':
+            case 'finishonboarding':
+            case 'finish':
                 msg = { type: 'rampkit:onboarding-finished', payload: action.payload };
                 break;
             case 'setvariable':
