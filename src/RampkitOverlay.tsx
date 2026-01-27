@@ -717,12 +717,49 @@ export const injectedButtonAnimations = `
 })();
 `;
 
+// Translation script for localized content
+// Replaces text content in elements with data-ramp-id attributes
+// Supports RTL languages (Arabic, Hebrew, Persian, Urdu)
+export const injectedTranslationScript = `
+(function() {
+  var RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur'];
+
+  function applyTranslations(translations, locale, language) {
+    if (!translations || typeof translations !== 'object') return;
+
+    // Fallback chain: exact locale -> language code -> nothing
+    var t = translations[locale] || translations[language] || null;
+    if (!t) return;
+
+    // Apply RTL if needed
+    if (RTL_LANGUAGES.indexOf(language) !== -1) {
+      document.documentElement.setAttribute('dir', 'rtl');
+      document.documentElement.setAttribute('lang', language);
+    }
+
+    // Replace text content by data-ramp-id
+    Object.keys(t).forEach(function(id) {
+      var el = document.querySelector('[data-ramp-id="' + id + '"]');
+      if (el) {
+        el.textContent = t[id];
+      }
+    });
+  }
+
+  // Expose for immediate call
+  window.__rampkitApplyTranslations = applyTranslations;
+})();
+`;
+
 export type ScreenPayload = {
   id: string;
   label?: string;
   html: string;
   css?: string;
   js?: string;
+  /** Optional translations keyed by language/locale code (e.g., "es", "ar", "es_MX")
+   *  Each translation is a dictionary mapping data-ramp-id to translated text */
+  translations?: Record<string, Record<string, string>>;
 };
 
 type RampkitHapticEvent = {
@@ -1302,9 +1339,19 @@ function buildHtmlDocument(
   // Convert literal \n escape sequences to actual newlines
   // CSS white-space: pre-line will render them as line breaks
   html = html.replace(/\\n/g, '\n');
-  
+
+  // Translation support
+  const locale = context.device.locale;
+  const language = context.device.language;
+  const rtlLanguages = ['ar', 'he', 'fa', 'ur'];
+  const isRTL = rtlLanguages.includes(language);
+  const translations = screen.translations;
+  const translationCall = translations
+    ? `window.__rampkitApplyTranslations(${JSON.stringify(translations)}, "${locale}", "${language}");`
+    : '';
+
   return `<!doctype html>
-<html>
+<html${isRTL ? ' dir="rtl"' : ''} lang="${language}">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"/>
@@ -1320,6 +1367,9 @@ ${html}
 window.rampkitContext = ${JSON.stringify(context)};
 // State variables from onboarding
 window.__rampkitVariables = ${JSON.stringify(variables || {})};
+// Translation support
+${injectedTranslationScript}
+${translationCall}
 ${js}
 </script>
 </body>
