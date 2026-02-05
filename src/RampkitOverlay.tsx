@@ -2048,29 +2048,20 @@ function Overlay(props: {
       return;
     }
 
-    // True crossfade: both screens animate opacity simultaneously
+    // Snapshot-style crossfade: next screen is fully opaque underneath,
+    // current screen fades out on top to reveal it. No background bleed-through.
     setIsTransitioning(true);
 
-    // Ensure next screen starts transparent
-    nextScreenAnim.opacity.setValue(0);
+    // Next screen is fully visible underneath (it has lower zIndex during transition)
+    nextScreenAnim.opacity.setValue(1);
 
-    // Animate both screens in parallel
-    Animated.parallel([
-      // Current screen fades out
-      Animated.timing(currentScreenAnim.opacity, {
-        toValue: 0,
-        duration: 280,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }),
-      // Next screen fades in
-      Animated.timing(nextScreenAnim.opacity, {
-        toValue: 1,
-        duration: 280,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
+    // Fade out current screen to reveal next underneath
+    Animated.timing(currentScreenAnim.opacity, {
+      toValue: 0,
+      duration: 280,
+      easing: Easing.inOut(Easing.ease),
+      useNativeDriver: true,
+    }).start(() => {
       completeTransition(nextIndex, index);
       setIsTransitioning(false);
     });
