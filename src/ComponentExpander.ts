@@ -12,6 +12,7 @@ interface ComponentOverride {
   text?: string;
   src?: string;
   style?: string;
+  action?: Record<string, any> | Record<string, any>[];
 }
 
 /**
@@ -43,6 +44,28 @@ function parseOverrides(attributes: string): Record<string, ComponentOverride> {
   } catch {
     return {};
   }
+}
+
+/**
+ * Convert action to data-tap-dynamic format
+ */
+function actionToTapDynamic(action: Record<string, any> | Record<string, any>[]): string {
+  const actions = Array.isArray(action) ? action : [action];
+  return JSON.stringify({
+    values: [{ rules: [], actions }]
+  });
+}
+
+/**
+ * Escape JSON string for use in HTML attribute
+ */
+function escapeForHtmlAttribute(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -79,6 +102,34 @@ function expandComponent(
         "g"
       );
       expanded = expanded.replace(pattern, `$1 src="${override.src}"`);
+    }
+
+    if (override.action) {
+      const tapDynamic = actionToTapDynamic(override.action);
+      const escapedTapDynamic = escapeForHtmlAttribute(tapDynamic);
+
+      // Check if element already has data-tap-dynamic
+      const existingPattern = new RegExp(
+        `(<[^>]*data-ramp-id="${fullId}"[^>]*)\\sdata-tap-dynamic="[^"]*"`,
+        "g"
+      );
+      if (existingPattern.test(expanded)) {
+        // Replace existing data-tap-dynamic
+        expanded = expanded.replace(
+          existingPattern,
+          `$1 data-tap-dynamic="${escapedTapDynamic}"`
+        );
+      } else {
+        // Add new data-tap-dynamic attribute
+        const addPattern = new RegExp(
+          `(<[^>]*data-ramp-id="${fullId}")([^>]*>)`,
+          "g"
+        );
+        expanded = expanded.replace(
+          addPattern,
+          `$1 data-tap-dynamic="${escapedTapDynamic}"$2`
+        );
+      }
     }
   }
 
