@@ -2048,30 +2048,31 @@ function Overlay(props: {
       return;
     }
 
-    // Default fade animation: uses a white curtain overlay
+    // True crossfade: both screens animate opacity simultaneously
     setIsTransitioning(true);
 
-    Animated.timing(fadeOpacity, {
-      toValue: 1,
-      duration: 160,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start(() => {
-      // Swap screens instantly while curtain is opaque
-      currentScreenAnim.opacity.setValue(0);
-      nextScreenAnim.opacity.setValue(1);
+    // Ensure next screen starts transparent
+    nextScreenAnim.opacity.setValue(0);
 
-      requestAnimationFrame(() => {
-        completeTransition(nextIndex, index);
-
-        // Fade curtain out to reveal new screen
-        Animated.timing(fadeOpacity, {
-          toValue: 0,
-          duration: 160,
-          easing: Easing.in(Easing.quad),
-          useNativeDriver: true,
-        }).start(() => setIsTransitioning(false));
-      });
+    // Animate both screens in parallel
+    Animated.parallel([
+      // Current screen fades out
+      Animated.timing(currentScreenAnim.opacity, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }),
+      // Next screen fades in
+      Animated.timing(nextScreenAnim.opacity, {
+        toValue: 1,
+        duration: 280,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      completeTransition(nextIndex, index);
+      setIsTransitioning(false);
     });
   };
 
