@@ -409,3 +409,11 @@ export interface ScreenPosition {
     /** Row classification: "main" for main row screens, "variant" for screens below */
     row: "main" | "variant";
 }
+/**
+ * Reusable component definition
+ */
+export interface SDKComponent {
+    key: string;
+    name: string;
+    html: string;
+}

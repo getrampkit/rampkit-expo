@@ -5,10 +5,11 @@ import RootSiblings from "react-native-root-siblings";
 // before any navigation. This fixes the "glitch on first open" bug.
 import { WebView } from "react-native-webview";
 import { Haptics, StoreReview, Notifications } from "./RampKitNative";
-import { RampKitContext, NavigationData } from "./types";
+import { RampKitContext, NavigationData, SDKComponent } from "./types";
 import { OnboardingResponseStorage } from "./OnboardingResponseStorage";
 import { Logger, isVerboseLogging } from "./Logger";
 import { eventManager } from "./EventManager";
+import { expandHTML } from "./ComponentExpander";
 
 // Reuse your injected script from App
 export const injectedHardening = `
@@ -838,6 +839,7 @@ export function showRampkitOverlay(opts: {
   requiredScripts?: string[];
   rampkitContext?: RampKitContext;
   navigation?: NavigationData;
+  components?: Record<string, SDKComponent>;
   onClose?: () => void;
   onOnboardingFinished?: (payload?: any) => void;
   onShowPaywall?: (payload?: any) => void;
@@ -862,6 +864,7 @@ export function showRampkitOverlay(opts: {
         requiredScripts={opts.requiredScripts}
         rampkitContext={opts.rampkitContext}
         navigation={opts.navigation}
+        components={opts.components}
         prebuiltDocs={prebuiltDocs}
         onRequestClose={() => {
           activeCloseHandler = null;
@@ -910,12 +913,13 @@ export function preloadRampkitOverlay(opts: {
   variables?: Record<string, any>;
   requiredScripts?: string[];
   rampkitContext?: RampKitContext;
+  components?: Record<string, SDKComponent>;
 }) {
   // Preloading is now simplified - just warm up the WebView process
   try {
     if (preloadSibling) return;
     const docs = opts.screens.map((s) =>
-      buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext)
+      buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext, opts.components)
     );
     const HiddenPreloader = () => (
       <View
@@ -1268,10 +1272,11 @@ function buildHtmlDocument(
   screen: ScreenPayload,
   variables?: Record<string, any>,
   requiredScripts?: string[],
-  rampkitContext?: RampKitContext
+  rampkitContext?: RampKitContext,
+  components?: Record<string, SDKComponent>
 ) {
   const css = screen.css || "";
-  let html = screen.html || "";
+  let html = expandHTML(screen.html || "", components);
   const js = screen.js || "";
   const scripts = (requiredScripts || [])
     .map((src) => `<script src="${src}"></script>`)
@@ -1387,6 +1392,7 @@ function Overlay(props: {
   requiredScripts?: string[];
   rampkitContext?: RampKitContext;
   navigation?: NavigationData;
+  components?: Record<string, SDKComponent>;
   prebuiltDocs?: string[];
   onRequestClose: () => void;
   onOnboardingFinished?: (payload?: any) => void;
@@ -2209,9 +2215,9 @@ function Overlay(props: {
     () =>
       props.prebuiltDocs ||
       props.screens.map((s) =>
-        buildHtmlDocument(s, props.variables, props.requiredScripts, props.rampkitContext)
+        buildHtmlDocument(s, props.variables, props.requiredScripts, props.rampkitContext, props.components)
       ),
-    [props.prebuiltDocs, props.screens, props.variables, props.requiredScripts, props.rampkitContext]
+    [props.prebuiltDocs, props.screens, props.variables, props.requiredScripts, props.rampkitContext, props.components]
   );
 
   React.useEffect(() => {

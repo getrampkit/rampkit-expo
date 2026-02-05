@@ -331,6 +331,8 @@ class RampKitCore {
                     screenPositions: data.navigation.screenPositions,
                 }
                 : undefined;
+            // Extract components from onboarding data
+            const components = data.components || undefined;
             // Track onboarding started event
             const onboardingId = data.onboardingId || data.id || "unknown";
             EventManager_1.eventManager.trackOnboardingStarted(onboardingId, screens.length);
@@ -342,6 +344,7 @@ class RampKitCore {
                     variables,
                     requiredScripts,
                     rampkitContext,
+                    components,
                 });
             }
             catch (_) { }
@@ -352,6 +355,7 @@ class RampKitCore {
                 requiredScripts,
                 rampkitContext,
                 navigation,
+                components,
                 onOnboardingFinished: (payload) => {
                     var _a;
                     // Track onboarding completed - trigger: finished

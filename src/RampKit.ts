@@ -17,7 +17,7 @@ import {
 } from "./DeviceInfoCollector";
 import { eventManager } from "./EventManager";
 import { TransactionObserver } from "./RampKitNative";
-import { DeviceInfo, RampKitConfig, EventContext, RampKitContext, NavigationData, Manifest } from "./types";
+import { DeviceInfo, RampKitConfig, EventContext, RampKitContext, NavigationData, Manifest, SDKComponent } from "./types";
 import { buildTargetingContext } from "./TargetingContext";
 import { evaluateTargets, TargetEvaluationResult } from "./TargetingEngine";
 import { ENDPOINTS, SUPABASE_ANON_KEY, MANIFEST_BASE_URL } from "./constants";
@@ -402,6 +402,10 @@ export class RampKitCore {
           }
         : undefined;
 
+      // Extract components from onboarding data
+      const components: Record<string, SDKComponent> | undefined =
+        data.components || undefined;
+
       // Track onboarding started event
       const onboardingId = data.onboardingId || data.id || "unknown";
       eventManager.trackOnboardingStarted(onboardingId, screens.length);
@@ -414,6 +418,7 @@ export class RampKitCore {
           variables,
           requiredScripts,
           rampkitContext,
+          components,
         });
       } catch (_) {}
 
@@ -424,6 +429,7 @@ export class RampKitCore {
         requiredScripts,
         rampkitContext,
         navigation,
+        components,
         onOnboardingFinished: (payload?: any) => {
           // Track onboarding completed - trigger: finished
           eventManager.trackOnboardingCompleted(

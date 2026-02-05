@@ -52,6 +52,7 @@ const RampKitNative_1 = require("./RampKitNative");
 const OnboardingResponseStorage_1 = require("./OnboardingResponseStorage");
 const Logger_1 = require("./Logger");
 const EventManager_1 = require("./EventManager");
+const ComponentExpander_1 = require("./ComponentExpander");
 // Reuse your injected script from App
 exports.injectedHardening = `
 (function(){
@@ -845,7 +846,7 @@ function showRampkitOverlay(opts) {
         return; // already visible
     // Always build fresh docs to ensure templates are resolved with current context
     const prebuiltDocs = undefined;
-    sibling = new react_native_root_siblings_1.default(((0, jsx_runtime_1.jsx)(Overlay, { onboardingId: opts.onboardingId, screens: opts.screens, variables: opts.variables, requiredScripts: opts.requiredScripts, rampkitContext: opts.rampkitContext, navigation: opts.navigation, prebuiltDocs: prebuiltDocs, onRequestClose: () => {
+    sibling = new react_native_root_siblings_1.default(((0, jsx_runtime_1.jsx)(Overlay, { onboardingId: opts.onboardingId, screens: opts.screens, variables: opts.variables, requiredScripts: opts.requiredScripts, rampkitContext: opts.rampkitContext, navigation: opts.navigation, components: opts.components, prebuiltDocs: prebuiltDocs, onRequestClose: () => {
             var _a;
             activeCloseHandler = null;
             hideRampkitOverlay();
@@ -878,7 +879,7 @@ function preloadRampkitOverlay(opts) {
     try {
         if (preloadSibling)
             return;
-        const docs = opts.screens.map((s) => buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext));
+        const docs = opts.screens.map((s) => buildHtmlDocument(s, opts.variables, opts.requiredScripts, opts.rampkitContext, opts.components));
         const HiddenPreloader = () => ((0, jsx_runtime_1.jsx)(react_native_1.View, { pointerEvents: "none", style: {
                 position: "absolute",
                 width: 1,
@@ -1167,9 +1168,9 @@ function resolveContextTemplates(text, context) {
         return match;
     });
 }
-function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext) {
+function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext, components) {
     const css = screen.css || "";
-    let html = screen.html || "";
+    let html = (0, ComponentExpander_1.expandHTML)(screen.html || "", components);
     const js = screen.js || "";
     const scripts = (requiredScripts || [])
         .map((src) => `<script src="${src}"></script>`)
@@ -1998,7 +1999,7 @@ function Overlay(props) {
         return () => sub.remove();
     }, [index, handleRequestClose]);
     const docs = (0, react_1.useMemo)(() => props.prebuiltDocs ||
-        props.screens.map((s) => buildHtmlDocument(s, props.variables, props.requiredScripts, props.rampkitContext)), [props.prebuiltDocs, props.screens, props.variables, props.requiredScripts, props.rampkitContext]);
+        props.screens.map((s) => buildHtmlDocument(s, props.variables, props.requiredScripts, props.rampkitContext, props.components)), [props.prebuiltDocs, props.screens, props.variables, props.requiredScripts, props.rampkitContext, props.components]);
     react_1.default.useEffect(() => {
         if (docs.length === 0) {
             setVisible(true);
