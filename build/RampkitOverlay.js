@@ -1177,11 +1177,18 @@ function resolveContextTemplates(text, context) {
         // Check if this is a ternary expression
         const ternary = splitTernary(expr);
         if (ternary) {
-            const { condition, trueValue, falseValue } = ternary;
+            const { condition } = ternary;
+            // Extract the variable name from the condition (e.g., "gender" from "gender == 'Male'")
+            const condVarMatch = condition.trim().match(/^([A-Za-z_][A-Za-z0-9_.]*)/);
+            const condVar = condVarMatch ? condVarMatch[1] : null;
+            // If the condition variable is not a known device/user var, preserve for runtime resolution
+            if (!condVar || !vars.hasOwnProperty(condVar)) {
+                return match;
+            }
             const result = evaluateCondition(condition, vars);
             const value = result
-                ? parseTernaryValue(trueValue, vars)
-                : parseTernaryValue(falseValue, vars);
+                ? parseTernaryValue(ternary.trueValue, vars)
+                : parseTernaryValue(ternary.falseValue, vars);
             return value;
         }
         // Simple variable substitution
