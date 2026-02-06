@@ -529,7 +529,14 @@ export const injectedTemplateResolver = `
       });
     });
 
-    console.log('[RampKit] Initial scan: stored ' + templateStore.length + ' text templates, ' + attrTemplateStore.length + ' attribute templates');
+    try {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'rampkit:debug',
+          message: '[RampKit] Initial scan: stored ' + templateStore.length + ' text templates, ' + attrTemplateStore.length + ' attribute templates'
+        }));
+      }
+    } catch(e) {}
   }
 
   function reResolveTemplates() {
@@ -546,7 +553,14 @@ export const injectedTemplateResolver = `
       }
     });
 
-    console.log('[RampKit] Re-resolved ' + templateStore.length + ' text templates, ' + attrTemplateStore.length + ' attribute templates');
+    try {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'rampkit:debug',
+          message: '[RampKit] Re-resolved ' + templateStore.length + ' text templates, ' + attrTemplateStore.length + ' attribute templates'
+        }));
+      }
+    } catch(e) {}
   }
 
   // Listen for variable updates via custom event
@@ -591,37 +605,52 @@ export const injectedTemplateResolver = `
     resolveAllTemplates();
   };
 
+  // Helper to send diagnostic messages to native
+  function sendDiagnostic(msg) {
+    console.log(msg);
+    try {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'rampkit:debug',
+          message: msg
+        }));
+      }
+    } catch(e) {}
+  }
+
   // Expose for programmatic variable updates
   window.rampkitUpdateVariables = function(newVars) {
     if (!newVars) return;
 
     // Wait for initial resolution to complete
     if (!window.__rampkitTemplatesResolved) {
-      console.log('[RampKit] Waiting for initial resolution...');
+      sendDiagnostic('[RampKit] Waiting for initial resolution...');
       setTimeout(function() { window.rampkitUpdateVariables(newVars); }, 100);
       return;
     }
 
-    console.log('[RampKit] rampkitUpdateVariables called:', Object.keys(newVars));
+    sendDiagnostic('[RampKit] rampkitUpdateVariables called: ' + JSON.stringify(Object.keys(newVars)));
 
     Object.keys(newVars).forEach(function(k) { stateVars[k] = newVars[k]; });
     window.__rampkitVariables = stateVars;
     rebuildVars();
 
-    console.log('[RampKit] Variables after rebuild:', JSON.stringify(vars));
-    console.log('[RampKit] Template stores: text=' + templateStore.length + ', attr=' + attrTemplateStore.length);
+    sendDiagnostic('[RampKit] Variables after rebuild: ' + JSON.stringify(vars));
+    sendDiagnostic('[RampKit] Template stores: text=' + templateStore.length + ', attr=' + attrTemplateStore.length);
 
     // If stores are empty (initial scan may have failed), re-scan DOM
     if (templateStore.length === 0 && attrTemplateStore.length === 0) {
-      console.log('[RampKit] No templates stored, re-scanning...');
+      sendDiagnostic('[RampKit] No templates stored, re-scanning...');
       resolveAllTemplates();
     } else {
-      console.log('[RampKit] Re-resolving ' + (templateStore.length + attrTemplateStore.length) + ' templates...');
+      sendDiagnostic('[RampKit] Re-resolving ' + (templateStore.length + attrTemplateStore.length) + ' templates...');
       reResolveTemplates();
     }
 
-    console.log('[RampKit] Re-resolution complete');
+    sendDiagnostic('[RampKit] Re-resolution complete');
   };
+
+  sendDiagnostic('[RampKit] Templates resolved, stores: text=' + templateStore.length + ' attr=' + attrTemplateStore.length + ' vars=' + Object.keys(vars).length);
 })();
 `;
 
@@ -2665,6 +2694,11 @@ function Overlay(props: {
                   // 2.5) Input blur event - flush pending variable_set event
                   if (data?.type === "rampkit:input-blur" && data?.variableName) {
                     handleInputBlur(data.variableName);
+                    return;
+                  }
+                  // 2.6) Debug message from WebView - log to console
+                  if (data?.type === "rampkit:debug" && data?.message) {
+                    console.log(`[RampKit Template Debug] ${data.message}`);
                     return;
                   }
                   // 3) A page requested an in-app review prompt
