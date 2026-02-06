@@ -1316,18 +1316,31 @@ function resolveContextTemplates(
 }
 
 /** Strip outer document tags from complete HTML documents.
- *  If screen.html is a full <!DOCTYPE html>...<body>...</body></html>,
- *  extract only the body content to prevent nested HTML documents. */
+ *  Preserves <style> and <link> tags from <head> so CSS is not lost. */
 function extractBodyContent(html: string): string {
   const trimmed = html.trim();
   if (!trimmed.match(/^<!doctype|^<html/i)) return html;
+
+  // Extract <style> and <link> tags from <head>
+  let headStyles = '';
+  const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+  if (headMatch) {
+    const headContent = headMatch[1];
+    const styles = headContent.match(/<style[^>]*>[\s\S]*?<\/style>/gi);
+    if (styles) headStyles += styles.join('\n') + '\n';
+    const links = headContent.match(/<link[^>]*>/gi);
+    if (links) headStyles += links.join('\n') + '\n';
+  }
+
+  // Extract body content
   const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-  if (bodyMatch) return bodyMatch[1];
-  // Fallback: strip tags
+  if (bodyMatch) return headStyles + bodyMatch[1];
+
+  // Fallback: strip only structural tags, keep content
   return html
     .replace(/<!doctype[^>]*>/gi, '')
     .replace(/<html[^>]*>/gi, '').replace(/<\/html>/gi, '')
-    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+    .replace(/<head[^>]*>/gi, '').replace(/<\/head>/gi, '')
     .replace(/<body[^>]*>/gi, '').replace(/<\/body>/gi, '')
     .trim();
 }
