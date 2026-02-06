@@ -304,6 +304,35 @@ export const injectedDynamicTapHandler = `
                     msg = { type: 'rampkit:variables', vars: updateVars };
                 }
                 break;
+            case 'addclass':
+                if (action.class) {
+                    var targets = action.selector ? document.querySelectorAll(action.selector) : [window.__rampkitCurrentTapElement];
+                    targets.forEach(function(el) { if (el) el.classList.add(action.class); });
+                }
+                break;
+            case 'removeclass':
+                if (action.class) {
+                    var targets = action.selector ? document.querySelectorAll(action.selector) : [window.__rampkitCurrentTapElement];
+                    targets.forEach(function(el) { if (el) el.classList.remove(action.class); });
+                }
+                break;
+            case 'toggleclass':
+                if (action.class) {
+                    var targets = action.selector ? document.querySelectorAll(action.selector) : [window.__rampkitCurrentTapElement];
+                    targets.forEach(function(el) { if (el) el.classList.toggle(action.class); });
+                }
+                break;
+            case 'selectone':
+                // Radio-button behavior: remove class from all, add to tapped
+                if (action.class && action.selector) {
+                    document.querySelectorAll(action.selector).forEach(function(el) {
+                        el.classList.remove(action.class);
+                    });
+                    if (window.__rampkitCurrentTapElement) {
+                        window.__rampkitCurrentTapElement.classList.add(action.class);
+                    }
+                }
+                break;
         }
         if (msg) {
             try {
@@ -336,6 +365,8 @@ export const injectedDynamicTapHandler = `
     
     // Click interceptor - capture phase, runs BEFORE onclick handlers
     function interceptClick(event) {
+        // Store tapped element for CSS class actions
+        window.__rampkitCurrentTapElement = event.target;
         var result = findDynamicTap(event.target);
         if (!result) return;
 
@@ -485,7 +516,7 @@ export const injectedTemplateResolver = `
       }
     });
     // Also resolve in common attributes
-    var attrs = ['src', 'href', 'alt', 'title', 'placeholder', 'value', 'data-text'];
+    var attrs = ['src', 'href', 'alt', 'title', 'placeholder', 'value', 'data-text', 'class'];
     document.querySelectorAll('*').forEach(function(el) {
       attrs.forEach(function(a) {
         var v = el.getAttribute(a);

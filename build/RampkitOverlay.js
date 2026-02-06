@@ -343,6 +343,35 @@ exports.injectedDynamicTapHandler = `
                     msg = { type: 'rampkit:variables', vars: updateVars };
                 }
                 break;
+            case 'addclass':
+                if (action.class) {
+                    var targets = action.selector ? document.querySelectorAll(action.selector) : [window.__rampkitCurrentTapElement];
+                    targets.forEach(function(el) { if (el) el.classList.add(action.class); });
+                }
+                break;
+            case 'removeclass':
+                if (action.class) {
+                    var targets = action.selector ? document.querySelectorAll(action.selector) : [window.__rampkitCurrentTapElement];
+                    targets.forEach(function(el) { if (el) el.classList.remove(action.class); });
+                }
+                break;
+            case 'toggleclass':
+                if (action.class) {
+                    var targets = action.selector ? document.querySelectorAll(action.selector) : [window.__rampkitCurrentTapElement];
+                    targets.forEach(function(el) { if (el) el.classList.toggle(action.class); });
+                }
+                break;
+            case 'selectone':
+                // Radio-button behavior: remove class from all, add to tapped
+                if (action.class && action.selector) {
+                    document.querySelectorAll(action.selector).forEach(function(el) {
+                        el.classList.remove(action.class);
+                    });
+                    if (window.__rampkitCurrentTapElement) {
+                        window.__rampkitCurrentTapElement.classList.add(action.class);
+                    }
+                }
+                break;
         }
         if (msg) {
             try {
@@ -375,6 +404,8 @@ exports.injectedDynamicTapHandler = `
     
     // Click interceptor - capture phase, runs BEFORE onclick handlers
     function interceptClick(event) {
+        // Store tapped element for CSS class actions
+        window.__rampkitCurrentTapElement = event.target;
         var result = findDynamicTap(event.target);
         if (!result) return;
 
@@ -523,7 +554,7 @@ exports.injectedTemplateResolver = `
       }
     });
     // Also resolve in common attributes
-    var attrs = ['src', 'href', 'alt', 'title', 'placeholder', 'value', 'data-text'];
+    var attrs = ['src', 'href', 'alt', 'title', 'placeholder', 'value', 'data-text', 'class'];
     document.querySelectorAll('*').forEach(function(el) {
       attrs.forEach(function(a) {
         var v = el.getAttribute(a);
@@ -1845,27 +1876,20 @@ function Overlay(props) {
             });
             return;
         }
-        // Default fade animation: uses a white curtain overlay
+        // Snapshot-style crossfade: next screen is fully opaque underneath,
+        // current screen fades out on top to reveal it. No background bleed-through.
         setIsTransitioning(true);
-        react_native_1.Animated.timing(fadeOpacity, {
-            toValue: 1,
-            duration: 160,
-            easing: react_native_1.Easing.out(react_native_1.Easing.quad),
+        // Next screen is fully visible underneath (it has lower zIndex during transition)
+        nextScreenAnim.opacity.setValue(1);
+        // Fade out current screen to reveal next underneath
+        react_native_1.Animated.timing(currentScreenAnim.opacity, {
+            toValue: 0,
+            duration: 280,
+            easing: react_native_1.Easing.inOut(react_native_1.Easing.ease),
             useNativeDriver: true,
         }).start(() => {
-            // Swap screens instantly while curtain is opaque
-            currentScreenAnim.opacity.setValue(0);
-            nextScreenAnim.opacity.setValue(1);
-            requestAnimationFrame(() => {
-                completeTransition(nextIndex, index);
-                // Fade curtain out to reveal new screen
-                react_native_1.Animated.timing(fadeOpacity, {
-                    toValue: 0,
-                    duration: 160,
-                    easing: react_native_1.Easing.in(react_native_1.Easing.quad),
-                    useNativeDriver: true,
-                }).start(() => setIsTransitioning(false));
-            });
+            completeTransition(nextIndex, index);
+            setIsTransitioning(false);
         });
     };
     function buildDispatchScript(payload) {
