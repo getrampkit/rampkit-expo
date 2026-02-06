@@ -340,6 +340,7 @@ exports.injectedDynamicTapHandler = `
                     if (window.__rampkitVars) window.__rampkitVars[varKey] = varValue;
                     var updateVars = {};
                     updateVars[varKey] = varValue;
+                    if (typeof window.rampkitUpdateVariables === 'function') window.rampkitUpdateVariables(updateVars);
                     msg = { type: 'rampkit:variables', vars: updateVars };
                 }
                 break;
