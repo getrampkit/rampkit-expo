@@ -251,70 +251,6 @@ export const injectedDynamicTapHandler = `
         return true;
     }
     
-    // Self-contained template resolver (doesn't depend on inline IIFE)
-    function rkResolveValue(val, vars) {
-        if (!val) return '';
-        val = val.trim();
-        var sq = val.match(/^'(.*)'$/); if (sq) return sq[1];
-        var dq = val.match(/^"(.*)"$/); if (dq) return dq[1];
-        if (/^[A-Za-z_]\\w*$/.test(val)) { var v = vars[val]; return v !== undefined && v !== null ? String(v) : ''; }
-        return val;
-    }
-    function rkResolveExpr(text, vars) {
-        if (!text || text.indexOf('$\{') === -1) return text;
-        return text.replace(/\\$\\{([^}]+)\\}/g, function(m, expr) {
-            expr = expr.trim();
-            if (/^[A-Za-z_]\\w*$/.test(expr)) {
-                var v = vars[expr]; return v !== undefined && v !== null ? String(v) : '';
-            }
-            var qi = expr.indexOf('?'), ci = expr.indexOf(':');
-            if (qi > 0 && ci > qi) {
-                var cond = expr.substring(0, qi).trim();
-                var rest = expr.substring(qi + 1);
-                var rci = rest.indexOf(':');
-                if (rci >= 0) {
-                    var tv = rkResolveValue(rest.substring(0, rci).trim(), vars);
-                    var fv = rkResolveValue(rest.substring(rci + 1).trim(), vars);
-                    var eqm = cond.match(/^([A-Za-z_]\\w*)\\s*==\\s*(.+)$/);
-                    if (eqm) { var vv = vars[eqm[1]] !== undefined ? String(vars[eqm[1]]) : ''; return vv === rkResolveValue(eqm[2], vars) ? tv : fv; }
-                    var nem = cond.match(/^([A-Za-z_]\\w*)\\s*!=\\s*(.+)$/);
-                    if (nem) { var vv = vars[nem[1]] !== undefined ? String(vars[nem[1]]) : ''; return vv !== rkResolveValue(nem[2], vars) ? tv : fv; }
-                }
-            }
-            return '';
-        });
-    }
-    function reResolveAllTemplates() {
-        var vars = getVars();
-        var hasStored = document.querySelector('[data-rk-oc]');
-        if (!hasStored) {
-            document.querySelectorAll('*').forEach(function(el) {
-                var cls = el.getAttribute('class');
-                if (cls && cls.indexOf('$\{') !== -1) {
-                    el.setAttribute('data-rk-oc', cls);
-                }
-            });
-            var walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, null, false);
-            var tn;
-            while (tn = walker.nextNode()) {
-                if (tn.textContent && tn.textContent.indexOf('$\{') !== -1 && tn.parentNode) {
-                    tn.parentNode.setAttribute('data-rk-ot', tn.textContent);
-                }
-            }
-        }
-        document.querySelectorAll('[data-rk-oc]').forEach(function(el) {
-            el.setAttribute('class', rkResolveExpr(el.getAttribute('data-rk-oc'), vars));
-        });
-        document.querySelectorAll('[data-rk-ot]').forEach(function(el) {
-            var orig = el.getAttribute('data-rk-ot');
-            for (var i = 0; i < el.childNodes.length; i++) {
-                if (el.childNodes[i].nodeType === 3) {
-                    el.childNodes[i].textContent = rkResolveExpr(orig, vars);
-                    break;
-                }
-            }
-        });
-    }
 
     // Execute an action
     function execAction(action) {
@@ -367,7 +303,6 @@ export const injectedDynamicTapHandler = `
                     var updateVars = {};
                     updateVars[varKey] = varValue;
                     if (typeof window.rampkitUpdateVariables === 'function') window.rampkitUpdateVariables(updateVars);
-                    reResolveAllTemplates();
                     msg = { type: 'rampkit:variables', vars: updateVars };
                 }
                 break;
@@ -579,9 +514,6 @@ export const injectedTemplateResolver = `
       var resolved = resolveTemplate(orig);
       if (resolved !== orig) {
         templateStore.push({ node: n, original: orig });
-        if (n.parentNode && n.parentNode.setAttribute) {
-          n.parentNode.setAttribute('data-rk-ot', orig);
-        }
         n.textContent = resolved;
       }
     });
@@ -592,15 +524,12 @@ export const injectedTemplateResolver = `
         var v = el.getAttribute(a);
         if (v && v.indexOf('\${') !== -1) {
           attrTemplateStore.push({ element: el, attr: a, original: v });
-          if (a === 'class') {
-            el.setAttribute('data-rk-oc', v);
-          } else {
-            el.setAttribute('data-rk-oa-' + a, v);
-          }
           el.setAttribute(a, resolveTemplate(v));
         }
       });
     });
+
+    console.log('[RampKit] Initial scan: stored ' + templateStore.length + ' text templates, ' + attrTemplateStore.length + ' attribute templates');
   }
 
   function reResolveTemplates() {
@@ -616,6 +545,8 @@ export const injectedTemplateResolver = `
         item.element.setAttribute(item.attr, resolveTemplate(item.original));
       }
     });
+
+    console.log('[RampKit] Re-resolved ' + templateStore.length + ' text templates, ' + attrTemplateStore.length + ' attribute templates');
   }
 
   // Listen for variable updates via custom event
@@ -663,14 +594,33 @@ export const injectedTemplateResolver = `
   // Expose for programmatic variable updates
   window.rampkitUpdateVariables = function(newVars) {
     if (!newVars) return;
+
+    // Wait for initial resolution to complete
+    if (!window.__rampkitTemplatesResolved) {
+      console.log('[RampKit] Waiting for initial resolution...');
+      setTimeout(function() { window.rampkitUpdateVariables(newVars); }, 100);
+      return;
+    }
+
+    console.log('[RampKit] rampkitUpdateVariables called:', Object.keys(newVars));
+
     Object.keys(newVars).forEach(function(k) { stateVars[k] = newVars[k]; });
     window.__rampkitVariables = stateVars;
     rebuildVars();
+
+    console.log('[RampKit] Variables after rebuild:', JSON.stringify(vars));
+    console.log('[RampKit] Template stores: text=' + templateStore.length + ', attr=' + attrTemplateStore.length);
+
+    // If stores are empty (initial scan may have failed), re-scan DOM
     if (templateStore.length === 0 && attrTemplateStore.length === 0) {
+      console.log('[RampKit] No templates stored, re-scanning...');
       resolveAllTemplates();
     } else {
+      console.log('[RampKit] Re-resolving ' + (templateStore.length + attrTemplateStore.length) + ' templates...');
       reResolveTemplates();
     }
+
+    console.log('[RampKit] Re-resolution complete');
   };
 })();
 `;
