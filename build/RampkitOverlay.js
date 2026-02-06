@@ -606,12 +606,16 @@ exports.injectedTemplateResolver = `
     } catch(e) {}
   });
 
-  // Run on DOM ready
-  if (document.body) {
-    resolveAllTemplates();
-  } else {
-    document.addEventListener('DOMContentLoaded', resolveAllTemplates);
-  }
+  // Run on DOM ready (wrapped in try-catch so rampkitUpdateVariables is always defined)
+  try {
+    if (document.body) {
+      resolveAllTemplates();
+    } else {
+      document.addEventListener('DOMContentLoaded', function() {
+        try { resolveAllTemplates(); } catch(e2) { console.error('[RampKit] DOMContentLoaded resolve error:', e2); }
+      });
+    }
+  } catch(e) { console.error('[RampKit] Template resolve error:', e); }
 
   window.__rampkitTemplatesResolved = true;
 
@@ -626,7 +630,11 @@ exports.injectedTemplateResolver = `
     Object.keys(newVars).forEach(function(k) { stateVars[k] = newVars[k]; });
     window.__rampkitVariables = stateVars;
     rebuildVars();
-    reResolveTemplates();
+    if (templateStore.length === 0 && attrTemplateStore.length === 0) {
+      resolveAllTemplates();
+    } else {
+      reResolveTemplates();
+    }
   };
 })();
 `;
@@ -1207,9 +1215,27 @@ function resolveContextTemplates(text, context) {
         return match;
     });
 }
+/** Strip outer document tags from complete HTML documents.
+ *  If screen.html is a full <!DOCTYPE html>...<body>...</body></html>,
+ *  extract only the body content to prevent nested HTML documents. */
+function extractBodyContent(html) {
+    const trimmed = html.trim();
+    if (!trimmed.match(/^<!doctype|^<html/i))
+        return html;
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    if (bodyMatch)
+        return bodyMatch[1];
+    // Fallback: strip tags
+    return html
+        .replace(/<!doctype[^>]*>/gi, '')
+        .replace(/<html[^>]*>/gi, '').replace(/<\/html>/gi, '')
+        .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+        .replace(/<body[^>]*>/gi, '').replace(/<\/body>/gi, '')
+        .trim();
+}
 function buildHtmlDocument(screen, variables, requiredScripts, rampkitContext, components) {
     const css = screen.css || "";
-    let html = (0, ComponentExpander_1.expandHTML)(screen.html || "", components);
+    let html = extractBodyContent((0, ComponentExpander_1.expandHTML)(screen.html || "", components));
     const js = screen.js || "";
     const scripts = (requiredScripts || [])
         .map((src) => `<script src="${src}"></script>`)
