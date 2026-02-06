@@ -579,6 +579,9 @@ export const injectedTemplateResolver = `
       var resolved = resolveTemplate(orig);
       if (resolved !== orig) {
         templateStore.push({ node: n, original: orig });
+        if (n.parentNode && n.parentNode.setAttribute) {
+          n.parentNode.setAttribute('data-rk-ot', orig);
+        }
         n.textContent = resolved;
       }
     });
@@ -589,6 +592,11 @@ export const injectedTemplateResolver = `
         var v = el.getAttribute(a);
         if (v && v.indexOf('\${') !== -1) {
           attrTemplateStore.push({ element: el, attr: a, original: v });
+          if (a === 'class') {
+            el.setAttribute('data-rk-oc', v);
+          } else {
+            el.setAttribute('data-rk-oa-' + a, v);
+          }
           el.setAttribute(a, resolveTemplate(v));
         }
       });
