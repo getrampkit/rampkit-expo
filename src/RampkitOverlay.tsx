@@ -344,7 +344,20 @@ export const injectedDynamicTapHandler = `
             } catch(e) {}
         }
     }
-    
+
+    // Execute actions sequentially, supporting async 'wait' actions
+    function execActions(actions, idx) {
+        if (idx >= actions.length) return;
+        var a = actions[idx];
+        if (a && a.type && a.type.toLowerCase() === 'wait') {
+            var ms = a.waitMs || a.duration || 1000;
+            setTimeout(function() { execActions(actions, idx + 1); }, ms);
+            return;
+        }
+        execAction(a);
+        execActions(actions, idx + 1);
+    }
+
     // Evaluate dynamic tap config
     function evalDynamicTap(config) {
         if (!config || !config.values) return false;
@@ -356,9 +369,7 @@ export const injectedDynamicTapHandler = `
             var rules = cond.rules || [];
             var actions = cond.actions || [];
             if (condType === 'else' || evalRules(rules, vars)) {
-                for (var j = 0; j < actions.length; j++) {
-                    execAction(actions[j]);
-                }
+                execActions(actions, 0);
                 return true;
             }
         }
@@ -433,6 +444,66 @@ export const injectedTemplateResolver = `
   }
 
   rebuildVars();
+
+  // Newline handling constants
+  var BACKSLASH = String.fromCharCode(92);
+  var BACKSLASH_N = BACKSLASH + 'n';
+  var DOUBLE_BACKSLASH_N = BACKSLASH + BACKSLASH + 'n';
+
+  function processTextNodeForNewlines(textNode) {
+    var text = textNode.textContent;
+    if (!text) return false;
+    if (text.trim() === '') return false; // Skip HTML formatting whitespace
+    if (text.indexOf(BACKSLASH_N) === -1 && text.indexOf('\\n') === -1) return false;
+    var normalized = text;
+    while (normalized.indexOf(DOUBLE_BACKSLASH_N) !== -1) {
+      normalized = normalized.split(DOUBLE_BACKSLASH_N).join(BACKSLASH_N);
+    }
+    normalized = normalized.split(BACKSLASH_N).join('\\n');
+    var lines = normalized.split('\\n');
+    if (lines.length > 1) {
+      var frag = document.createDocumentFragment();
+      lines.forEach(function(line, i) {
+        frag.appendChild(document.createTextNode(line));
+        if (i < lines.length - 1) frag.appendChild(document.createElement('br'));
+      });
+      if (textNode.parentNode) {
+        textNode.parentNode.replaceChild(frag, textNode);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function convertNewlinesInAllText() {
+    var walker = document.createTreeWalker(
+      document.body || document.documentElement,
+      NodeFilter.SHOW_TEXT, null, false
+    );
+    var n, list = [];
+    while (n = walker.nextNode()) {
+      if (n.textContent && n.textContent.length > 0) list.push(n);
+    }
+    list.forEach(processTextNodeForNewlines);
+  }
+
+  function setupNewlineObserver() {
+    var obs = new MutationObserver(function(muts) {
+      muts.forEach(function(m) {
+        m.addedNodes.forEach(function(node) {
+          if (node.nodeType === 3) {
+            processTextNodeForNewlines(node);
+          } else if (node.nodeType === 1) {
+            var w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null, false);
+            var t, tList = [];
+            while (t = w.nextNode()) tList.push(t);
+            tList.forEach(processTextNodeForNewlines);
+          }
+        });
+      });
+    });
+    obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+  }
 
   function resolveValue(value) {
     if (!value) return '';
@@ -515,6 +586,7 @@ export const injectedTemplateResolver = `
       if (resolved !== orig) {
         templateStore.push({ node: n, original: orig });
         n.textContent = resolved;
+        processTextNodeForNewlines(n);
       }
     });
     // Also resolve in common attributes
@@ -544,6 +616,7 @@ export const injectedTemplateResolver = `
     templateStore.forEach(function(item) {
       if (item.node && item.node.parentNode) {
         item.node.textContent = resolveTemplate(item.original);
+        processTextNodeForNewlines(item.node);
       }
     });
     // Re-resolve stored attributes
@@ -591,9 +664,11 @@ export const injectedTemplateResolver = `
   try {
     if (document.body) {
       resolveAllTemplates();
+      convertNewlinesInAllText();
+      setupNewlineObserver();
     } else {
       document.addEventListener('DOMContentLoaded', function() {
-        try { resolveAllTemplates(); } catch(e2) { console.error('[RampKit] DOMContentLoaded resolve error:', e2); }
+        try { resolveAllTemplates(); convertNewlinesInAllText(); setupNewlineObserver(); } catch(e2) { console.error('[RampKit] DOMContentLoaded resolve error:', e2); }
       });
     }
   } catch(e) { console.error('[RampKit] Template resolve error:', e); }
@@ -603,6 +678,7 @@ export const injectedTemplateResolver = `
   // Expose for manual re-resolution after dynamic content changes
   window.rampkitResolveTemplates = function() {
     resolveAllTemplates();
+    convertNewlinesInAllText();
   };
 
   // Helper to send diagnostic messages to native
@@ -1472,7 +1548,7 @@ function buildHtmlDocument(
   html = resolveContextTemplates(html, context);
 
   // Convert literal \n escape sequences to actual newlines
-  // CSS white-space: pre-line will render them as line breaks
+  // JS-based processTextNodeForNewlines will convert them to <br> elements
   html = html.replace(/\\n/g, '\n');
 
   // Translation support
@@ -1493,7 +1569,7 @@ function buildHtmlDocument(
 ${preconnectTags}
 ${scripts}
 <style>${css}</style>
-<style>html,body{margin:0;padding:0;overflow-x:hidden;white-space:pre-line} *{-webkit-tap-highlight-color: rgba(0,0,0,0);} ::selection{background:transparent}::-moz-selection{background:transparent}</style>
+<style>html,body{margin:0;padding:0;overflow-x:hidden} *{-webkit-tap-highlight-color: rgba(0,0,0,0);} ::selection{background:transparent}::-moz-selection{background:transparent}</style>
 </head>
 <body>
 ${html}
